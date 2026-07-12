@@ -1,0 +1,21 @@
+[gd_resource type="Resource" load_steps=2 format=2]
+
+[ext_resource path="res://BreedData.gd" type="Script" id=1]
+
+[resource]
+script = ExtResource( 1 )
+breed_name = "Grubby"
+head_radius = 15.0
+num_segments = 6
+segment_scales = [ 1.0, 0.95, 0.9, 0.85, 0.8, 0.7 ]
+primary_color = Color( 0.35, 0.76, 0.35, 1.0 )
+secondary_color = Color( 0.18, 0.49, 0.2, 1.0 )
+eye_type = "normal"
+wobble_speed = 18.0
+wobble_amplitude = 12.0
+segment_spacing = 9.0
+num_body_segments = 5
+num_tail_segments = 0
+has_limbs = false
+num_limbs = 0
+limb_lengths = [ 10.0, 10.0 ]

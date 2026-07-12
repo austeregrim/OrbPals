@@ -1,0 +1,21 @@
+[gd_resource type="Resource" load_steps=2 format=2]
+
+[ext_resource path="res://BreedData.gd" type="Script" id=1]
+
+[resource]
+script = ExtResource( 1 )
+breed_name = "Glub"
+head_radius = 20.0
+num_segments = 5
+segment_scales = [ 1.0, 0.8, 0.6, 0.4, 0.2 ]
+primary_color = Color( 0.92, 0.25, 0.48, 1.0 )
+secondary_color = Color( 1.0, 0.6, 0.0, 1.0 )
+eye_type = "cyclops"
+wobble_speed = 16.0
+wobble_amplitude = 8.0
+segment_spacing = 13.0
+num_body_segments = 1
+num_tail_segments = 3
+has_limbs = true
+num_limbs = 2
+limb_lengths = [ 10.0, 10.0 ]

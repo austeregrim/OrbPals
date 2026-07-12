@@ -1,0 +1,21 @@
+[gd_resource type="Resource" load_steps=2 format=2]
+
+[ext_resource path="res://BreedData.gd" type="Script" id=1]
+
+[resource]
+script = ExtResource( 1 )
+breed_name = "Slinky"
+head_radius = 16.0
+num_segments = 3
+segment_scales = [ 1.0, 0.95, 0.9 ]
+primary_color = Color( 0.67, 0.28, 0.74, 1.0 )
+secondary_color = Color( 0.16, 0.71, 0.96, 1.0 )
+eye_type = "slanted"
+wobble_speed = 12.0
+wobble_amplitude = 6.0
+segment_spacing = 18.0
+num_body_segments = 2
+num_tail_segments = 0
+has_limbs = true
+num_limbs = 4
+limb_lengths = [ 14.0, 14.0 ]

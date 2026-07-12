@@ -1,0 +1,46 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=4
+
+_global_script_classes=[ {
+"base": "Resource",
+"class": "BreedData",
+"language": "GDScript",
+"path": "res://BreedData.gd"
+}, {
+"base": "Resource",
+"class": "PetStats",
+"language": "GDScript",
+"path": "res://PetStats.gd"
+} ]
+_global_script_class_icons={
+"BreedData": "",
+"PetStats": ""
+}
+
+[application]
+
+config/name="OrbPals"
+run/main_scene="res://Main.tscn"
+
+[display]
+
+window/size/borderless=true
+window/size/always_on_top=true
+window/per_pixel_transparency/allowed=true
+window/per_pixel_transparency/enabled=true
+window/size/transparent=true
+
+[physics]
+
+common/enable_pause_aware_picking=true
+
+[rendering]
+
+environment/default_clear_color=Color( 0, 0, 0, 0 )
