@@ -785,10 +785,10 @@ func _update_state_behavior(delta):
 					# --- TOY PLAY ---
 					if dist_to_item < base_radius + 20.0:
 						# Kick the toy!
-						var kick_dir = dir.rotated(rand_range(-0.5, 0.5))
+						var kick_dir = dir.rotated(rand_range(-0.6, 0.6))
 						target_item.call("apply_impulse", kick_dir * rand_range(200.0, 380.0))
 						# Boredom gain per kick
-						stats.boredom = clamp(stats.boredom + 15.0, 0.0, 100.0)
+						stats.boredom = clamp(stats.boredom + 2.0, 0.0, 100.0)
 						# Bounce back slightly
 						center_vel = -dir * 100.0
 					elif dist_to_item < 90.0:
