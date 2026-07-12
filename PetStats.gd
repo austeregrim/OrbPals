@@ -23,17 +23,17 @@ export(float) var wellness_decay_rate = 0.02  # very slow passive; real drops fr
 export(float) var decay_multiplier = 1.0
 
 func decay(delta: float):
-    var d = delta * decay_multiplier
-    hunger = clamp(hunger - hunger_decay_rate * d, 0.0, 100.0)
-    boredom = clamp(boredom - boredom_decay_rate * d, 0.0, 100.0)
-    energy = clamp(energy - energy_decay_rate * d, 0.0, 100.0)
-    affection = clamp(affection - affection_decay_rate * d, 0.0, 100.0)
-    curiosity = clamp(curiosity - curiosity_decay_rate * d, 0.0, 100.0)
-    agitation = clamp(agitation - agitation_decay_rate * d, 0.0, 100.0)
-    toilet = clamp(toilet + 0.1 * d, 0.0, 100.0)
-    
-    # Wellness only degrades very slowly on its own.
-    # Real wellness drops come from: spoiled food (Pet.gd) or poop proximity (Pet.gd).
-    wellness = clamp(wellness - wellness_decay_rate * d, 0.0, 100.0)
+	var d = delta * decay_multiplier
+	hunger = clamp(hunger - hunger_decay_rate * d, 0.0, 100.0)
+	boredom = clamp(boredom - boredom_decay_rate * d, 0.0, 100.0)
+	energy = clamp(energy - energy_decay_rate * d, 0.0, 100.0)
+	affection = clamp(affection - affection_decay_rate * d, 0.0, 100.0)
+	curiosity = clamp(curiosity - curiosity_decay_rate * d, 0.0, 100.0)
+	agitation = clamp(agitation - agitation_decay_rate * d, 0.0, 100.0)
+	toilet = clamp(toilet + 0.1 * d, 0.0, 100.0)
+	
+	# Wellness only degrades very slowly on its own.
+	# Real wellness drops come from: spoiled food (Pet.gd) or poop proximity (Pet.gd).
+	wellness = clamp(wellness - wellness_decay_rate * d, 0.0, 100.0)
 
 
