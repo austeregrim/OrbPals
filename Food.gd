@@ -9,6 +9,34 @@ var is_dragging = false
 var drag_positions = []
 var prev_mouse_pos = Vector2.ZERO
 
+# 3D Coordinates
+var x_pos: float = 0.0
+var z_depth: float = 0.0
+var y_height: float = 0.0
+var z_vel: float = 0.0
+
+func get_depth_scale(z: float) -> float:
+	return lerp(1.0, 0.85, z)
+
+func _ready():
+	x_pos = global_position.x
+	y_height = 0.0
+	
+	var horizon_y = OS.window_size.y * 0.35
+	var floor_max_y = OS.window_size.y - radius
+	var depth_span = max(floor_max_y - horizon_y, 1.0)
+	
+	var main = get_parent()
+	if main and "dispenser_device" in main and is_instance_valid(main.dispenser_device):
+		var nozzle_pos = main.dispenser_device.get_nozzle_global_position()
+		if global_position.distance_to(nozzle_pos) < 50.0:
+			z_depth = 0.8
+			var ground_y = lerp(floor_max_y, horizon_y, z_depth)
+			y_height = max(ground_y - global_position.y, 0.0)
+			return
+			
+	z_depth = clamp((floor_max_y - global_position.y) / depth_span, 0.0, 1.0)
+
 # Type tag for reliable detection
 var is_food = true
 var is_toy = false
@@ -28,7 +56,8 @@ func _physics_process(delta):
 		if age >= spoil_time:
 			is_spoiled = true
 			update()
-			
+
+	scale = Vector2.ONE
 	if is_dragging:
 		var mouse_pos = get_global_mouse_position()
 		global_position = mouse_pos
@@ -40,8 +69,8 @@ func _physics_process(delta):
 			
 		prev_mouse_pos = mouse_pos
 	else:
-		# NO gravity: float in space and drift with air friction
-		velocity *= 0.95 # air friction/drag
+		# Float in space and drift with air friction
+		velocity *= 0.95
 		global_position += velocity * delta
 		
 		# Boundary bounce check
@@ -63,19 +92,20 @@ func _physics_process(delta):
 		elif global_position.x >= wall_r:
 			global_position.x = wall_r
 			velocity.x = -velocity.x * bounce
-		
+			
 		# Spoiled food wiggles slightly in place
 		if is_spoiled:
 			global_position.x += sin(OS.get_ticks_msec() * 0.015) * 0.4
+			
+		# Keep within screen boundaries
+		global_position.x = clamp(global_position.x, radius, OS.window_size.x - radius)
+		global_position.y = clamp(global_position.y, radius, OS.window_size.y - radius)
 
-	# Keep within screen
-	global_position.x = clamp(global_position.x, radius, OS.window_size.x - radius)
-	global_position.y = clamp(global_position.y, radius, OS.window_size.y - radius)
 	update()
 
 func _input(event):
 	if event is InputEventMouseButton:
-		var hit = event.global_position.distance_to(global_position) <= radius * 1.6
+		var hit = event.global_position.distance_to(global_position) <= radius * 1.6 * scale.x
 		if event.pressed:
 			if hit:
 				if event.button_index == BUTTON_RIGHT:
@@ -109,13 +139,14 @@ func _input(event):
 func get_click_polygon() -> PoolVector2Array:
 	# Padded circle polygon for the passthrough region — covers item + margin
 	var poly = PoolVector2Array()
-	var padded_r = radius + 10.0
+	var padded_r = (radius + 10.0) * scale.x
 	for i in range(10):
 		var angle = i * 2.0 * PI / 10.0
 		poly.append(global_position + Vector2(cos(angle), sin(angle)) * padded_r)
 	return poly
 
 func _draw():
+
 	if is_treat:
 		# Draw Treat (Cookie)
 		# Cookie base (tan brown)

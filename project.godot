@@ -29,6 +29,10 @@ _global_script_class_icons={
 config/name="OrbPals"
 run/main_scene="res://Main.tscn"
 
+[autoload]
+
+Settings="*res://Settings.gd"
+
 [display]
 
 window/size/borderless=true

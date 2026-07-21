@@ -14,10 +14,51 @@ enum State {
 	EMERGING_FROM_DISPENSER,
 	RELIEVING_SELF,
 	SELF_DISPENSE,
-	WINDOW_SIT
+	WINDOW_SIT,
+	PLAY_WITH_PET,
+	DIGGING,
+	BEGGING
 }
 
 signal returned_to_box(breed_name)
+
+# Pet Identity & Custom Data
+var pet_id: String = "grubby"
+var pet_name: String = "Grubby"
+var genetic_seed: int = 123456
+var life_stage: String = "adult" # hatchling, juvenile, adult, senior, deceased
+var age_seconds: float = 0.0
+var time_outside_dispenser_seconds: float = 0.0
+
+# Procedural Features
+var has_fur: bool = false
+var fur_length: float = 7.0
+var fur_color: Color = Color("ff6f61")
+var has_antennae: bool = false
+var antenna_length: float = 18.0
+var antenna_color: Color = Color("ffff00")
+var foot_shape: String = "circle" # "circle" or "oval"
+var element_type_idx: int = 0
+var ability_cooldown_timer: float = 0.0
+
+# 6 New Procedural Anatomy Features
+var wing_type: String = "none" # "none", "angel", "bat", "butterfly", "fin"
+var wing_color: Color = Color("ffffff")
+var tail_type: String = "none" # "none", "fox_fluff", "devil_fork", "beaver_paddle", "dragon_spikes"
+var tail_color: Color = Color("ff7700")
+var head_feature: String = "none" # "none", "unicorn_horn", "ram_horns", "dino_frill", "crown_spikes"
+var horn_color: Color = Color("ffffaa")
+var pattern_type: String = "solid" # "solid", "tiger_stripes", "leopard_spots", "galaxy_swirl", "belly_patch"
+var pattern_color: Color = Color("333333")
+var pupil_shape: String = "circle" # "circle", "cat_slit", "star", "heart", "plus"
+var has_cheeks: bool = true
+var cheek_color: Color = Color("ff6688")
+
+# Multi-pet social & digging
+var partner_pet = null
+var social_timer: float = 0.0
+var dig_timer: float = 0.0
+var heart_emote_timer: float = 0.0
 
 # Settings
 export(Resource) var breed_data = null
@@ -30,6 +71,15 @@ export(int) var num_points = 16
 var active_breed = null
 var base_radius = 20.0
 var segment_positions = []
+
+# 3D Depth coordinates
+var x_pos: float = 0.0
+var z_depth: float = 0.0
+var y_height: float = 0.0
+var z_vel: float = 0.0
+
+func get_depth_scale(z: float) -> float:
+	return lerp(1.0, 0.85, z)
 
 # Stats & AI
 const PetStats = preload("res://PetStats.gd")
@@ -142,12 +192,27 @@ func _ready():
 		point_velocities.append(Vector2.ZERO)
 		target_relative_offsets.append(offset)
 		
+	x_pos = global_position.x
+	y_height = 0.0
+	var horizon_y_ready = OS.window_size.y * 0.35
+	var floor_max_y_ready = OS.window_size.y - base_radius
+	z_depth = clamp((floor_max_y_ready - global_position.y) / max(floor_max_y_ready - horizon_y_ready, 1.0), 0.0, 1.0)
+
 	_change_state(State.IDLE)
 
 func _physics_process(delta):
 	# 1. Decay drives if enabled
 	if decay_enabled:
 		stats.decay(delta)
+		
+	# 1.2 Elemental Energy Charge & Discharge (Juvenile/Adult/Senior only)
+	if can_use_ability() and stats != null:
+		if stats.elemental_energy >= 100.0 and (current_state == State.WANDER or current_state == State.IDLE):
+			stats.elemental_energy = 0.0
+			_manifest_elemental_power()
+		elif stats.agitation > 60.0 and stats.elemental_energy >= 30.0:
+			stats.elemental_energy = max(0.0, stats.elemental_energy - 35.0)
+			_manifest_elemental_power()
 		
 	# Check for state transitions based on drives
 	_evaluate_states(delta)
@@ -176,21 +241,21 @@ func _physics_process(delta):
 	# 4. Center node movement
 	var bounds = _get_viewport_bounds()
 	if is_dragging:
-		# Dragging physics
 		var mouse_pos = get_global_mouse_position()
 		global_position = mouse_pos
 		center_vel = Vector2.ZERO
 		
-		# Track drag speed for throwing
 		drag_positions.append(mouse_pos)
 		if drag_positions.size() > 5:
 			drag_positions.remove(0)
 			
-		# Agitation increases if dragged rapidly
 		if prev_mouse_pos != Vector2.ZERO:
 			var dist_moved = mouse_pos.distance_to(prev_mouse_pos)
-			if dist_moved > 40.0:
-				stats.agitation = clamp(stats.agitation + dist_moved * 0.15, 0.0, 100.0)
+			if dist_moved > 50.0:
+				stats.agitation = clamp(stats.agitation + dist_moved * 0.008, 0.0, 100.0)
+			else:
+				stats.affection = clamp(stats.affection + 0.05, 0.0, 100.0)
+				stats.agitation = clamp(stats.agitation - 0.1, 0.0, 100.0)
 		prev_mouse_pos = mouse_pos
 	else:
 		# Physics movement
@@ -205,6 +270,26 @@ func _physics_process(delta):
 		# Apply velocity
 		global_position += center_vel * delta
 		
+		# Calculate floor / platform landing
+		var platform_y = bounds.end.y - base_radius
+		var main = get_parent()
+		if main and "desktop_window_manager" in main and is_instance_valid(main.desktop_window_manager):
+			var window_rects = main.desktop_window_manager.get_window_rects()
+			for rect in window_rects:
+				if global_position.x >= rect.position.x - base_radius and global_position.x <= rect.end.x + base_radius:
+					var top_y = rect.position.y - base_radius
+					if global_position.y <= rect.position.y + 25 and top_y < platform_y:
+						platform_y = top_y
+						
+		if global_position.y >= platform_y:
+			global_position.y = platform_y
+			if center_vel.y > 0:
+				center_vel.y = -center_vel.y * bounce_damping
+				if abs(center_vel.y) < 30.0:
+					center_vel.y = 0.0
+					is_falling = false
+				center_vel.x *= 0.8
+				
 		# Center bounds collision
 		var radius = base_radius
 		if global_position.x < bounds.position.x + radius:
@@ -215,22 +300,24 @@ func _physics_process(delta):
 			global_position.x = bounds.end.x - radius
 			center_vel.x = -center_vel.x * bounce_damping
 			stats.agitation += 2.0
-			
-		if global_position.y < bounds.position.y + radius:
-			global_position.y = bounds.position.y + radius
-			center_vel.y = -center_vel.y * bounce_damping
-			stats.agitation += 2.0
-		elif global_position.y > bounds.end.y - radius:
-			global_position.y = bounds.end.y - radius
-			center_vel.y = -center_vel.y * bounce_damping
-			# If vertical velocity becomes very small, stop falling
-			if abs(center_vel.y) < 30.0:
-				center_vel.y = 0.0
-				is_falling = false
-			# Friction on floor
-			center_vel.x *= 0.8
+				
+			if global_position.y < bounds.position.y + radius:
+				global_position.y = bounds.position.y + radius
+				center_vel.y = -center_vel.y * bounce_damping
+				stats.agitation += 2.0
+			elif global_position.y > bounds.end.y - radius:
+				global_position.y = bounds.end.y - radius
+				center_vel.y = -center_vel.y * bounce_damping
+				# If vertical velocity becomes very small, stop falling
+				if abs(center_vel.y) < 30.0:
+					center_vel.y = 0.0
+					is_falling = false
+				# Friction on floor
+				center_vel.x *= 0.8
 			
 	# 5. Simulate outer points (Spring-Mass System)
+	var current_floor_y = bounds.end.y
+
 	for i in range(num_points):
 		var p_pos = point_positions[i]
 		var p_vel = point_velocities[i]
@@ -257,8 +344,8 @@ func _physics_process(delta):
 		if p_pos.y < bounds.position.y:
 			p_pos.y = bounds.position.y
 			p_vel.y = -p_vel.y * bounce_damping
-		elif p_pos.y > bounds.end.y:
-			p_pos.y = bounds.end.y
+		elif p_pos.y > current_floor_y:
+			p_pos.y = current_floor_y
 			p_vel.y = -p_vel.y * bounce_damping
 			# Floor friction for point
 			p_vel.x *= 0.8
@@ -299,7 +386,7 @@ func _physics_process(delta):
 			
 			for i in range(1, 3):
 				segment_positions[i].x = clamp(segment_positions[i].x, 0.0, bounds.end.x)
-				segment_positions[i].y = clamp(segment_positions[i].y, 0.0, bounds.end.y)
+				segment_positions[i].y = clamp(segment_positions[i].y, 0.0, current_floor_y)
 		else:
 			# Default trailing tail / caterpillar follow — with max-distance constraint
 			for i in range(1, segment_positions.size()):
@@ -333,7 +420,7 @@ func _physics_process(delta):
 				
 				# Keep segments within boundaries
 				segment_positions[i].x = clamp(segment_positions[i].x, 0.0, bounds.end.x)
-				segment_positions[i].y = clamp(segment_positions[i].y, 0.0, bounds.end.y)
+				segment_positions[i].y = clamp(segment_positions[i].y, 0.0, current_floor_y)
 				
 	# 5.7 Simulate procedural step-locking for limbs
 	if active_breed.has_limbs and foot_positions.size() == active_breed.num_limbs:
@@ -367,9 +454,11 @@ func _physics_process(delta):
 			else:
 				desired_foot += Vector2(side_sign * 12.0, 18.0)
 				
+			current_floor_y = bounds.end.y - 2.0
+
 			# Clamp desired position within floor boundary
-			if desired_foot.y > bounds.end.y - 2.0:
-				desired_foot.y = bounds.end.y - 2.0
+			if desired_foot.y > current_floor_y:
+				desired_foot.y = current_floor_y
 				
 			# Check step trigger
 			if foot_step_progress[l_idx] >= 1.0:
@@ -390,8 +479,8 @@ func _physics_process(delta):
 						# Overshoot target in walking direction
 						var overshoot = center_vel.normalized() * 18.0
 						foot_step_target[l_idx] = desired_foot + overshoot
-						if foot_step_target[l_idx].y > bounds.end.y - 2.0:
-							foot_step_target[l_idx].y = bounds.end.y - 2.0
+						if foot_step_target[l_idx].y > current_floor_y:
+							foot_step_target[l_idx].y = current_floor_y
 							
 			# Process active step
 			if foot_step_progress[l_idx] < 1.0:
@@ -426,23 +515,29 @@ func _input(event):
 					drag_positions.clear()
 					drag_positions.append(local_click)
 					prev_mouse_pos = local_click
-					_change_state(State.AGITATED)
 			else:
 				if is_dragging:
 					is_dragging = false
 					prev_mouse_pos = Vector2.ZERO
-					# Calculate throwing velocity
 					if drag_positions.size() > 1:
 						var start_pos = drag_positions[0]
 						var end_pos = drag_positions[drag_positions.size() - 1]
 						var throw_vector = (end_pos - start_pos) / (0.016 * drag_positions.size())
-						center_vel = throw_vector.clamped(1200.0) # Speed limit
-						is_falling = true
+						center_vel = throw_vector.clamped(150.0)
+					else:
+						center_vel = Vector2.ZERO
+					is_falling = false
 					_change_state(State.WANDER)
 
 func get_click_polygon() -> PoolVector2Array:
 	var polygons = []
-	polygons.append(point_positions)
+	var s = 1.0
+	
+	var scaled_points = PoolVector2Array()
+	for i in range(point_positions.size()):
+		var offset = point_positions[i] - global_position
+		scaled_points.append(global_position + offset * transition_scale * s)
+	polygons.append(scaled_points)
 	
 	if active_breed and segment_positions.size() > 1:
 		for i in range(1, segment_positions.size()):
@@ -451,10 +546,12 @@ func get_click_polygon() -> PoolVector2Array:
 			var scale = active_breed.segment_scales[scale_idx] if scale_idx < active_breed.segment_scales.size() else 0.5
 			var seg_rad = active_breed.head_radius * scale
 			
+			var seg_local = seg_pos - global_position
 			var octagon = PoolVector2Array()
 			for j in range(8):
 				var angle = j * 2.0 * PI / 8.0
-				octagon.append(seg_pos + Vector2(cos(angle), sin(angle)) * seg_rad)
+				var offset = Vector2(cos(angle), sin(angle)) * seg_rad
+				octagon.append(global_position + (seg_local + offset) * transition_scale * s)
 			polygons.append(octagon)
 			
 	return combine_polygons_local(polygons)
@@ -467,13 +564,43 @@ func combine_polygons_local(polygons_list: Array) -> PoolVector2Array:
 		combined.append(Vector2(-9, -9))
 		return combined
 		
-	for i in range(polygons_list.size()):
-		var poly = polygons_list[i]
-		if poly.empty():
-			continue
+	# Filter out empty polygons
+	var valid_polys = []
+	for p in polygons_list:
+		if p.size() >= 3:
+			valid_polys.append(p)
+			
+	if valid_polys.empty():
+		combined.append(Vector2(-10, -10))
+		combined.append(Vector2(-9, -10))
+		combined.append(Vector2(-9, -9))
+		return combined
+
+	# Merge overlapping polygons to avoid even-odd winding holes
+	var merged = [valid_polys[0]]
+	for i in range(1, valid_polys.size()):
+		var to_merge = valid_polys[i]
+		var next_merged = []
+		for existing in merged:
+			var res = Geometry.merge_polygons_2d(existing, to_merge)
+			if res.size() == 1:
+				to_merge = res[0]
+			else:
+				next_merged.append(existing)
+		next_merged.append(to_merge)
+		merged = next_merged
+
+	# Traverse disjoint polygons with zero-width bridge paths
+	for i in range(merged.size()):
+		var poly = merged[i]
 		for pt in poly:
 			combined.append(pt)
-		combined.append(poly[0])
+		combined.append(poly[0]) # Close the loop
+		
+		# Bridge to the next polygon if one exists
+		if i < merged.size() - 1:
+			combined.append(merged[i + 1][0])
+			
 	return combined
 
 func set_drive_value(drive_name: String, value: float):
@@ -632,15 +759,35 @@ func _evaluate_states(delta):
 		State.WANDER:
 			var food = _find_closest_item(true)
 			var toy = _find_closest_item(false)
+			var other_pet = _find_closest_other_pet()
 			if stats.hunger < 50.0 and is_instance_valid(food):
 				target_item = food
 				_change_state(State.CHASE_ITEM)
 			elif (stats.boredom < 60.0 or (randf() < 0.003 and stats.boredom < 90.0)) and is_instance_valid(toy):
 				target_item = toy
 				_change_state(State.CHASE_ITEM)
+			elif is_instance_valid(other_pet) and global_position.distance_to(other_pet.global_position) < base_radius * 3.5:
+				partner_pet = other_pet
+				_change_state(State.PLAY_WITH_PET)
+			elif randf() < 0.004:
+				_change_state(State.DIGGING)
 			elif stats.affection < 50.0:
 				_change_state(State.CHASE_CURSOR)
 			elif state_timer > rand_range(5.0, 10.0):
+				_change_state(State.IDLE)
+
+		State.PLAY_WITH_PET:
+			if not is_instance_valid(partner_pet) or state_timer > 6.0:
+				_change_state(State.IDLE)
+			else:
+				# Hearts & friendship boost
+				stats.boredom = clamp(stats.boredom + delta * 20.0, 0.0, 100.0)
+				stats.affection = clamp(stats.affection + delta * 15.0, 0.0, 100.0)
+
+		State.DIGGING:
+			if state_timer > 2.5:
+				# Complete digging & drop material into inventory
+				_on_digging_complete()
 				_change_state(State.IDLE)
 				
 		State.WINDOW_SIT:
@@ -775,12 +922,14 @@ func _update_state_behavior(delta):
 			
 		State.CHASE_ITEM:
 			if is_instance_valid(target_item):
-				var dir = (target_item.global_position - global_position).normalized()
+				var target_pos = target_item.global_position
+				var dir = (target_pos - global_position).normalized()
 				var speed = 200.0
 				center_vel = lerp(center_vel, dir * speed, 0.1)
 				
 				# Check arrival at item
 				var dist_to_item = global_position.distance_to(target_item.global_position)
+					
 				if target_item.has_method("apply_impulse"):
 					# --- TOY PLAY ---
 					if dist_to_item < base_radius + 20.0:
@@ -940,23 +1089,26 @@ func _pick_random_wander_target():
 
 func _find_curiosity_boundary_target():
 	var bounds = _get_viewport_bounds()
-	# Pick a random point on screen edges
 	var edge = randi() % 4
 	var x = 0.0
 	var y = 0.0
+	
+	var horizon_y = bounds.position.y + 100.0
+	var floor_max_y = bounds.end.y - 100.0
+
 	match edge:
 		0: # Left
 			x = bounds.position.x + 50.0
-			y = rand_range(bounds.position.y + 100.0, bounds.end.y - 100.0)
+			y = rand_range(horizon_y, floor_max_y)
 		1: # Right
 			x = bounds.end.x - 50.0
-			y = rand_range(bounds.position.y + 100.0, bounds.end.y - 100.0)
-		2: # Top
+			y = rand_range(horizon_y, floor_max_y)
+		2: # Top (horizon)
 			x = rand_range(bounds.position.x + 100.0, bounds.end.x - 100.0)
-			y = bounds.position.y + 50.0
-		3: # Bottom
+			y = horizon_y
+		3: # Bottom (foreground)
 			x = rand_range(bounds.position.x + 100.0, bounds.end.x - 100.0)
-			y = bounds.end.y - 50.0
+			y = floor_max_y
 	target_wander_pos = Vector2(x, y)
 
 func _query_window_borders() -> Array:
@@ -1221,7 +1373,8 @@ func _draw():
 	if active_breed == null:
 		return
 		
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2(transition_scale, transition_scale))
+	var s = 1.0
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(transition_scale * s, transition_scale * s))
 		
 	# Generate colors based on state
 	var p_col = active_breed.primary_color
@@ -1249,6 +1402,11 @@ func _draw():
 	# Calculate limbs data
 	var limbs = _calculate_limbs(speed_factor)
 	
+	# Calculate shadow scaling
+	var sh_scale = lerp(1.0, 0.4, clamp(y_height / 300.0, 0.0, 1.0))
+	var sh_opacity = lerp(1.0, 0.15, clamp(y_height / 300.0, 0.0, 1.0))
+	var shadow_y_offset = 0.0
+
 	# 0.5. Draw limbs first (so they go in the back)
 	for limb in limbs:
 		var attach_local = limb.attachment - global_position
@@ -1256,75 +1414,27 @@ func _draw():
 		var foot_local = limb.foot - global_position
 
 		# Shadow under foot (ground shadow)
-		draw_circle(foot_local + Vector2(2, 4), 4.0, Color(0, 0, 0, 0.18))
+		draw_circle(foot_local + Vector2(2, shadow_y_offset + 4), 4.0 * sh_scale, Color(0, 0, 0, 0.18 * sh_opacity))
 
 		# --- Upper limb segment (attachment -> knee) ---
 		var upper_dir = (knee_local - attach_local)
 		var upper_len = upper_dir.length()
 		if upper_len > 0.001:
-			var up_n = upper_dir / upper_len
-			var up_perp = Vector2(-up_n.y, up_n.x)
-			var uw = 4.5   # upper limb half-width
-			# Outline
-			var up_pts_out = PoolVector2Array([
-				attach_local + up_perp * (uw + 1.5),
-				knee_local   + up_perp * (uw + 1.0),
-				knee_local   - up_perp * (uw + 1.0),
-				attach_local - up_perp * (uw + 1.5)
-			])
-			draw_colored_polygon(up_pts_out, outline_color)
-			# Fill (darker on edges, lighter in center for 3D look)
-			var up_pts = PoolVector2Array([
-				attach_local + up_perp * uw,
-				knee_local   + up_perp * (uw * 0.85),
-				knee_local   - up_perp * (uw * 0.85),
-				attach_local - up_perp * uw
-			])
-			draw_colored_polygon(up_pts, s_col)
-			# Highlight strip (top 1/3)
-			var hl_pts = PoolVector2Array([
-				attach_local + up_perp * uw,
-				knee_local   + up_perp * (uw * 0.85),
-				knee_local   + up_perp * (uw * 0.2),
-				attach_local + up_perp * (uw * 0.2)
-			])
-			draw_colored_polygon(hl_pts, Color(s_col.r + 0.18, s_col.g + 0.18, s_col.b + 0.18, 0.6))
-			# Joint circle at knee
-			draw_circle(knee_local, uw - 0.5, outline_color)
-			draw_circle(knee_local, uw - 2.0, s_col)
+			draw_line(attach_local, knee_local, outline_color, 11.0)
+			draw_line(attach_local, knee_local, s_col, 8.0)
+			draw_circle(knee_local, 4.5, outline_color)
+			draw_circle(knee_local, 3.5, s_col)
 
 		# --- Lower limb segment (knee -> foot) ---
 		var lower_dir = (foot_local - knee_local)
 		var lower_len = lower_dir.length()
 		if lower_len > 0.001:
-			var lo_n = lower_dir / lower_len
-			var lo_perp = Vector2(-lo_n.y, lo_n.x)
-			var lw = 3.5   # lower limb half-width (slightly thinner)
-			var lo_pts_out = PoolVector2Array([
-				knee_local  + lo_perp * (lw + 1.5),
-				foot_local  + lo_perp * (lw * 0.6),
-				foot_local  - lo_perp * (lw * 0.6),
-				knee_local  - lo_perp * (lw + 1.5)
-			])
-			draw_colored_polygon(lo_pts_out, outline_color)
-			var lo_pts = PoolVector2Array([
-				knee_local  + lo_perp * lw,
-				foot_local  + lo_perp * (lw * 0.5),
-				foot_local  - lo_perp * (lw * 0.5),
-				knee_local  - lo_perp * lw
-			])
-			draw_colored_polygon(lo_pts, p_col)
-			var lo_hl = PoolVector2Array([
-				knee_local  + lo_perp * lw,
-				foot_local  + lo_perp * (lw * 0.5),
-				foot_local  + lo_perp * 0.0,
-				knee_local  + lo_perp * (lw * 0.3)
-			])
-			draw_colored_polygon(lo_hl, Color(p_col.r + 0.2, p_col.g + 0.2, p_col.b + 0.2, 0.55))
+			draw_line(knee_local, foot_local, outline_color, 9.0)
+			draw_line(knee_local, foot_local, p_col, 6.0)
 
 		# Foot / hand ball
-		draw_circle(foot_local, 4.5, outline_color)
-		draw_circle(foot_local, 3.5, p_col)
+		draw_circle(foot_local, 5.0, outline_color)
+		draw_circle(foot_local, 4.0, p_col)
 		draw_circle(foot_local + Vector2(-1, -1), 1.5, Color(p_col.r + 0.3, p_col.g + 0.3, p_col.b + 0.3, 0.7))
 
 	# 1. Draw body segments tail-to-head (so tail is in the background)
@@ -1336,7 +1446,7 @@ func _draw():
 			var scale_idx = i
 			var scale = active_breed.segment_scales[scale_idx] if scale_idx < active_breed.segment_scales.size() else 0.5
 			var r = active_breed.head_radius * scale
-			draw_circle(local_pos + Vector2(3, 5), r * 0.7, Color(0, 0, 0, 0.12))
+			draw_circle(local_pos + Vector2(3, shadow_y_offset + 5), r * 0.7 * sh_scale, Color(0, 0, 0, 0.12 * sh_opacity))
 
 		for i in range(segment_positions.size() - 1, 0, -1):
 			var seg_pos = segment_positions[i]
@@ -1357,6 +1467,12 @@ func _draw():
 			draw_circle(local_pos + Vector2(-r * 0.28, -r * 0.28), r * 0.38,
 				Color(seg_col.r + 0.22, seg_col.g + 0.22, seg_col.b + 0.22, 0.55))
 
+	# 1.5 Draw Wings & Tail if present
+	if wing_type != "none":
+		_draw_wings()
+	if tail_type != "none":
+		_draw_tail()
+
 	# 2. Draw head polygon (with head shake offset)
 	var shake_offset = Vector2.ZERO
 	if head_shake_timer > 0.0:
@@ -1369,29 +1485,247 @@ func _draw():
 	# Head shadow
 	var shadow_poly = PoolVector2Array()
 	for pt in local_poly:
-		shadow_poly.append(pt + Vector2(4, 6))
-	draw_colored_polygon(shadow_poly, Color(0, 0, 0, 0.12))
+		shadow_poly.append(pt + Vector2(4, shadow_y_offset + 6))
+	draw_colored_polygon(shadow_poly, Color(0, 0, 0, 0.12 * sh_opacity))
 
 	# Draw head outline glow
 	draw_polyline(local_poly, outline_color, 4.0, true)
 	# Draw head color fill
 	draw_colored_polygon(local_poly, p_col)
+	
+	# 2.1 Draw Head Feature / Horns if present
+	if head_feature != "none":
+		_draw_head_feature(shake_offset)
+
+	# 2.2 Draw Procedural Fur / Spikes if enabled
+	if has_fur:
+		_draw_fur(local_poly)
+		
+	# 2.4 Draw Expressive Antennae if enabled
+	if has_antennae:
+		_draw_antennae(shake_offset)
+
 	# Head highlight (top-left crescent for 3D depth)
 	var hl_poly = PoolVector2Array()
 	var hl_count = num_points / 3
 	for i in range(hl_count):
 		var angle = (i * 2.0 * PI / num_points) + PI * 1.2
 		hl_poly.append(shake_offset + Vector2(cos(angle), sin(angle)) * base_radius * 0.6)
+	hl_poly.append(shake_offset)
 	if hl_poly.size() >= 3:
 		draw_colored_polygon(hl_poly, Color(p_col.r + 0.2, p_col.g + 0.2, p_col.b + 0.2, 0.35))
 	
 	# Draw face elements on the head (offset by shake)
-	draw_set_transform(shake_offset, 0.0, Vector2(transition_scale, transition_scale))
+	draw_set_transform(shake_offset, 0.0, Vector2(transition_scale * s, transition_scale * s))
 	_draw_eyes()
 	_draw_mouth()
-	# Restore base transform
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2(transition_scale, transition_scale))
+	if has_cheeks:
+		_draw_cheeks()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(transition_scale * s, transition_scale * s))
 
+func can_use_ability() -> bool:
+	return life_stage != "hatchling"
+
+func _draw_fur(head_poly: PoolVector2Array):
+	var f_col = fur_color
+	for i in range(head_poly.size()):
+		var pt = head_poly[i]
+		var next_pt = head_poly[(i + 1) % head_poly.size()]
+		var mid = (pt + next_pt) / 2.0
+		var out_dir = (mid).normalized()
+		var tip = mid + out_dir * fur_length
+		draw_line(mid, tip, f_col, 2.5)
+
+func _draw_antennae(shake: Vector2):
+	var time = OS.get_ticks_msec() * 0.005
+	var wiggle_left = sin(time * 3.0) * 4.0
+	var wiggle_right = cos(time * 3.0) * 4.0
+	var base_l = shake + Vector2(-base_radius * 0.4, -base_radius * 0.8)
+	var base_r = shake + Vector2(base_radius * 0.4, -base_radius * 0.8)
+	var tip_l = base_l + Vector2(-6 + wiggle_left, -antenna_length)
+	var tip_r = base_r + Vector2(6 + wiggle_right, -antenna_length)
+	draw_line(base_l, tip_l, antenna_color, 2.5)
+	draw_line(base_r, tip_r, antenna_color, 2.5)
+	draw_circle(tip_l, 4.0, antenna_color.lightened(0.3))
+	draw_circle(tip_r, 4.0, antenna_color.lightened(0.3))
+
+func _draw_wings():
+	var time = OS.get_ticks_msec() * 0.006
+	var flap = sin(time * 4.0) * 12.0
+	var w_col = wing_color
+	
+	var left_wing = PoolVector2Array([
+		Vector2(-base_radius * 0.7, 0),
+		Vector2(-base_radius * 1.2, 8.0 + flap),
+		Vector2(-base_radius * 1.8, -12.0 + flap)
+	])
+	var right_wing = PoolVector2Array([
+		Vector2(base_radius * 0.7, 0),
+		Vector2(base_radius * 1.2, 8.0 + flap),
+		Vector2(base_radius * 1.8, -12.0 + flap)
+	])
+	if left_wing.size() >= 3:
+		draw_colored_polygon(left_wing, w_col)
+		draw_polyline(left_wing, outline_color, 2.0, true)
+	if right_wing.size() >= 3:
+		draw_colored_polygon(right_wing, w_col)
+		draw_polyline(right_wing, outline_color, 2.0, true)
+
+func _draw_tail():
+	if segment_positions.size() < 1:
+		return
+	var tail_pos = segment_positions[segment_positions.size() - 1] - global_position
+	var t_col = tail_color
+	
+	match tail_type:
+		"fox_fluff":
+			draw_circle(tail_pos + Vector2(-8, -4), 10.0, t_col)
+			draw_circle(tail_pos + Vector2(-8, -4), 11.5, outline_color)
+			draw_circle(tail_pos + Vector2(-8, -4), 10.0, t_col)
+		"devil_fork":
+			draw_line(tail_pos, tail_pos + Vector2(-15, -10), t_col, 3.0)
+			draw_circle(tail_pos + Vector2(-15, -10), 4.0, t_col)
+		"beaver_paddle":
+			draw_rect(Rect2(tail_pos + Vector2(-16, -6), Vector2(14, 12)), t_col)
+		"dragon_spikes":
+			draw_line(tail_pos, tail_pos + Vector2(-12, -8), t_col, 4.0)
+
+func _draw_head_feature(shake: Vector2):
+	var h_col = horn_color
+	match head_feature:
+		"unicorn_horn":
+			var pts = PoolVector2Array([
+				shake + Vector2(-4, -base_radius * 0.8),
+				shake + Vector2(4, -base_radius * 0.8),
+				shake + Vector2(0, -base_radius * 1.7)
+			])
+			draw_colored_polygon(pts, h_col)
+			draw_polyline(pts, outline_color, 2.0, true)
+		"ram_horns":
+			draw_arc(shake + Vector2(-base_radius * 0.6, -base_radius * 0.7), 8.0, PI*0.5, PI*1.8, 8, h_col, 3.5)
+			draw_arc(shake + Vector2(base_radius * 0.6, -base_radius * 0.7), 8.0, -PI*0.8, PI*0.5, 8, h_col, 3.5)
+		"dino_frill":
+			draw_arc(shake + Vector2(0, -base_radius * 0.7), base_radius * 0.7, PI, 2*PI, 10, h_col, 4.0)
+
+func _draw_cheeks():
+	var c_col = cheek_color
+	c_col.a = 0.75
+	draw_circle(eye_left_pos + Vector2(-4, 8), 3.5, c_col)
+	draw_circle(eye_right_pos + Vector2(4, 8), 3.5, c_col)
+
+func _manifest_elemental_power():
+	var main = get_parent()
+	if not main:
+		return
+		
+	var ElementalEffectScene = load("res://ElementalEffect.tscn")
+	var elem_names = ["fire", "water", "lightning", "wind", "ice", "nature", "shadow", "light", "plasma", "earth"]
+	var elem = elem_names[clamp(element_type_idx, 0, 9)]
+	
+	match elem:
+		"fire":
+			if ElementalEffectScene:
+				var effect = ElementalEffectScene.instance()
+				effect.effect_type = "scorch_mark"
+				effect.global_position = global_position + Vector2(rand_range(-10, 10), base_radius)
+				main.add_child(effect)
+				if "active_items" in main:
+					main.active_items.append(effect)
+		"water":
+			if ElementalEffectScene:
+				var effect = ElementalEffectScene.instance()
+				effect.effect_type = "water_puddle"
+				effect.global_position = global_position + Vector2(rand_range(-15, 15), base_radius)
+				main.add_child(effect)
+				if "active_items" in main:
+					main.active_items.append(effect)
+		"ice":
+			if ElementalEffectScene:
+				var effect = ElementalEffectScene.instance()
+				effect.effect_type = "ice_cube"
+				effect.global_position = global_position + Vector2(rand_range(-20, 20), base_radius - 5.0)
+				main.add_child(effect)
+				if "active_items" in main:
+					main.active_items.append(effect)
+		"wind":
+			if ElementalEffectScene:
+				var effect = ElementalEffectScene.instance()
+				effect.effect_type = "tornado_streak"
+				effect.global_position = global_position
+				effect.velocity = Vector2(rand_range(-250, 250), -50.0)
+				main.add_child(effect)
+				if "active_items" in main:
+					main.active_items.append(effect)
+		"lightning":
+			# Lightning bolt strikes from ceiling to pet, supercharging toys and leaving scorch mark!
+			if ElementalEffectScene:
+				var effect = ElementalEffectScene.instance()
+				effect.effect_type = "scorch_mark"
+				effect.global_position = global_position + Vector2(rand_range(-10, 10), base_radius)
+				main.add_child(effect)
+				if "active_items" in main:
+					main.active_items.append(effect)
+			if "active_items" in main:
+				for item in main.active_items:
+					if is_instance_valid(item) and item.has_method("apply_element"):
+						item.call("apply_element", "lightning")
+		"nature":
+			if ElementalEffectScene:
+				var effect = ElementalEffectScene.instance()
+				effect.effect_type = "weed_patch" if (randf() < 0.6) else "flower_patch"
+				effect.global_position = global_position + Vector2(rand_range(-15, 15), base_radius)
+				main.add_child(effect)
+				if "active_items" in main:
+					main.active_items.append(effect)
+		"shadow":
+			# Leaves void rift / time crack at origin, teleports, and leaves void rift at target!
+			var origin_pos = global_position
+			var bounds = _get_viewport_bounds()
+			global_position.x = clamp(global_position.x + rand_range(-120, 120), bounds.position.x + base_radius, bounds.end.x - base_radius)
+			if ElementalEffectScene:
+				var rift1 = ElementalEffectScene.instance()
+				rift1.effect_type = "void_rift"
+				rift1.global_position = origin_pos
+				main.add_child(rift1)
+				var rift2 = ElementalEffectScene.instance()
+				rift2.effect_type = "void_rift"
+				rift2.global_position = global_position
+				main.add_child(rift2)
+				if "active_items" in main:
+					main.active_items.append(rift1)
+					main.active_items.append(rift2)
+		"light":
+			if stats:
+				stats.agitation = 0.0
+				stats.affection = clamp(stats.affection + 20.0, 0.0, 100.0)
+		"plasma":
+			# Psychic telekinetic pulse pulling nearby toys/food toward pet
+			if "active_items" in main:
+				for item in main.active_items:
+					if is_instance_valid(item) and ("velocity" in item):
+						var dir = (global_position - item.global_position).normalized()
+						item.velocity += dir * 250.0
+		"earth":
+			if ElementalEffectScene:
+				var effect = ElementalEffectScene.instance()
+				effect.effect_type = "crystal_geode"
+				effect.global_position = global_position + Vector2(rand_range(-15, 15), base_radius)
+				main.add_child(effect)
+				if "active_items" in main:
+					main.active_items.append(effect)
+
+func _draw_pupil_shape(center_pos: Vector2, rad: float, p_color: Color):
+	match pupil_shape:
+		"cat_eye":
+			draw_line(center_pos - Vector2(0, rad * 1.1), center_pos + Vector2(0, rad * 1.1), p_color, 2.5)
+		"lizard_eye":
+			draw_line(center_pos - Vector2(rad * 1.1, 0), center_pos + Vector2(rad * 1.1, 0), p_color, 2.5)
+		"spider_eye":
+			draw_circle(center_pos, rad * 0.5, p_color)
+			draw_circle(center_pos + Vector2(-3, -2), rad * 0.3, p_color)
+			draw_circle(center_pos + Vector2(3, -2), rad * 0.3, p_color)
+		_: # "round"
+			draw_circle(center_pos, rad * 0.55, p_color)
 
 func _draw_eyes():
 	var eye_color = Color("ffffff")
@@ -1428,19 +1762,19 @@ func _draw_eyes():
 			var big_rad = radius * 1.5
 			draw_circle(eye_center, big_rad, eye_color)
 			var pupil_offset = look_dir * 3.0
-			draw_circle(eye_center + pupil_offset, big_rad * 0.5, pupil_color)
+			_draw_pupil_shape(eye_center + pupil_offset, big_rad, pupil_color)
 		elif active_breed.eye_type == "slanted":
 			draw_circle(eye_left_pos, radius * 0.9, eye_color)
 			draw_circle(eye_right_pos, radius * 0.9, eye_color)
 			var pupil_offset = look_dir * 2.0
-			draw_line(eye_left_pos + pupil_offset - Vector2(5, -1), eye_left_pos + pupil_offset + Vector2(5, -1), pupil_color, 2.0)
-			draw_line(eye_right_pos + pupil_offset - Vector2(5, 1), eye_right_pos + pupil_offset + Vector2(5, 1), pupil_color, 2.0)
+			_draw_pupil_shape(eye_left_pos + pupil_offset, radius * 0.9, pupil_color)
+			_draw_pupil_shape(eye_right_pos + pupil_offset, radius * 0.9, pupil_color)
 		else:
 			draw_circle(eye_left_pos, radius, eye_color)
 			draw_circle(eye_right_pos, radius, eye_color)
 			var pupil_offset = look_dir * 3.0
-			draw_circle(eye_left_pos + pupil_offset, radius * 0.5, pupil_color)
-			draw_circle(eye_right_pos + pupil_offset, radius * 0.5, pupil_color)
+			_draw_pupil_shape(eye_left_pos + pupil_offset, radius, pupil_color)
+			_draw_pupil_shape(eye_right_pos + pupil_offset, radius, pupil_color)
 			
 	# Draw tears if hungry/stealing food
 	if active_breed and (stats.hunger < 35.0 or current_state == State.SELF_DISPENSE):
@@ -1459,10 +1793,85 @@ func return_to_dispenser(nozzle_pos: Vector2, breed_res):
 	pending_breed_res = breed_res
 	_change_state(State.RETURNING_TO_DISPENSER)
 
+func emerge_from_dispenser(nozzle_pos: Vector2):
+	global_position = nozzle_pos
+	for i in range(point_positions.size()):
+		point_positions[i] = nozzle_pos + (target_relative_offsets[i] if i < target_relative_offsets.size() else Vector2.ZERO) * 0.2
+	for i in range(segment_positions.size()):
+		segment_positions[i] = nozzle_pos
+	center_vel = Vector2(rand_range(-60, 60), 280.0)
+	transition_scale = 0.2
+	_change_state(State.EMERGING_FROM_DISPENSER)
+
 func change_breed(new_breed):
 	breed_data = new_breed
 	active_breed = new_breed
 	base_radius = active_breed.head_radius
+
+func setup_custom_data(pet_dict: Dictionary):
+	pet_id = pet_dict.get("pet_id", pet_id)
+	pet_name = pet_dict.get("pet_name", pet_name)
+	genetic_seed = pet_dict.get("genetic_seed", 123456)
+	element_type_idx = pet_dict.get("element_type_idx", 0)
+	life_stage = pet_dict.get("life_stage", "adult")
+	time_outside_dispenser_seconds = pet_dict.get("time_outside_dispenser_seconds", 0.0)
+	
+	has_fur = pet_dict.get("has_fur", false)
+	fur_length = pet_dict.get("fur_length", 7.0)
+	if pet_dict.has("fur_color"):
+		fur_color = Color(pet_dict.get("fur_color"))
+		
+	has_antennae = pet_dict.get("has_antennae", false)
+	antenna_length = pet_dict.get("antenna_length", 18.0)
+	if pet_dict.has("antenna_color"):
+		antenna_color = Color(pet_dict.get("antenna_color"))
+		
+	foot_shape = pet_dict.get("foot_shape", "circle")
+	wing_type = pet_dict.get("wing_type", "none")
+	if pet_dict.has("wing_color"):
+		wing_color = Color(pet_dict.get("wing_color"))
+		
+	tail_type = pet_dict.get("tail_type", "none")
+	if pet_dict.has("tail_color"):
+		tail_color = Color(pet_dict.get("tail_color"))
+		
+	head_feature = pet_dict.get("head_feature", "none")
+	if pet_dict.has("horn_color"):
+		horn_color = Color(pet_dict.get("horn_color"))
+		
+	pattern_type = pet_dict.get("pattern_type", "solid")
+	if pet_dict.has("pattern_color"):
+		pattern_color = Color(pet_dict.get("pattern_color"))
+		
+	pupil_shape = pet_dict.get("pupil_shape", "round")
+	has_cheeks = pet_dict.get("has_cheeks", true)
+	if pet_dict.has("cheek_color"):
+		cheek_color = Color(pet_dict.get("cheek_color"))
+		
+	if pet_dict.has("glow_color"):
+		outline_color = Color(pet_dict.get("glow_color"))
+		
+	var bd = BreedData.new()
+	bd.breed_name = pet_name
+	bd.head_radius = pet_dict.get("head_radius", 22.0)
+	bd.num_segments = pet_dict.get("num_segments", 4)
+	bd.segment_spacing = pet_dict.get("segment_spacing", 18.0)
+	bd.has_limbs = pet_dict.get("has_limbs", true)
+	bd.num_limbs = pet_dict.get("num_limbs", 2)
+	bd.eye_type = pet_dict.get("eye_type", "normal")
+	
+	if pet_dict.has("primary_color"):
+		bd.primary_color = Color(pet_dict.get("primary_color"))
+	else:
+		bd.primary_color = Color("ab47bc")
+	bd.secondary_color = bd.primary_color.darkened(0.2)
+	
+	var scales = []
+	for i in range(bd.num_segments):
+		scales.append(max(0.4, 1.0 - i * 0.15))
+	bd.segment_scales = scales
+	
+	change_breed(bd)
 	
 	segment_positions.clear()
 	for i in range(active_breed.num_segments):
@@ -1492,25 +1901,23 @@ func change_breed(new_breed):
 		
 	# Re-apply stats if we have a restore pending
 	if pending_restore_stats != null:
-		if pending_restore_stats.get("heal_on_arrive") == true:
-			stats.wellness = 100.0
-			stats.hunger = 100.0
-			stats.energy = 100.0
-			stats.affection = 100.0
-			stats.boredom = 100.0
-			stats.agitation = 0.0
-		else:
-			stats.hunger = pending_restore_stats.get("hunger", stats.hunger)
-			stats.boredom = pending_restore_stats.get("boredom", stats.boredom)
-			stats.energy = pending_restore_stats.get("energy", stats.energy)
-			stats.affection = pending_restore_stats.get("affection", stats.affection)
-			stats.curiosity = pending_restore_stats.get("curiosity", stats.curiosity)
-			stats.agitation = pending_restore_stats.get("agitation", stats.agitation)
-			stats.wellness = pending_restore_stats.get("wellness", stats.wellness)
-			stats.toilet = pending_restore_stats.get("toilet", stats.toilet)
+		if stats:
+			stats.hunger = pending_restore_stats.get("hunger", 100.0)
+			stats.boredom = pending_restore_stats.get("boredom", 100.0)
+			stats.energy = pending_restore_stats.get("energy", 100.0)
+			stats.affection = pending_restore_stats.get("affection", 100.0)
+			stats.curiosity = pending_restore_stats.get("curiosity", 100.0)
+			stats.agitation = pending_restore_stats.get("agitation", 0.0)
+			stats.wellness = pending_restore_stats.get("wellness", 100.0)
+			stats.toilet = pending_restore_stats.get("toilet", 0.0)
 		pending_restore_stats = null
 		
 	update()
+
+func _get_viewport_bounds() -> Rect2:
+	if get_viewport():
+		return Rect2(Vector2.ZERO, get_viewport().get_visible_rect().size)
+	return Rect2(Vector2.ZERO, OS.window_size)
 
 
 func _draw_mouth():
@@ -1536,9 +1943,6 @@ func _draw_mouth():
 		# Normal simple mouth line
 		draw_line(mouth_pos - Vector2(6, 0), mouth_pos + Vector2(6, 0), m_color, 2.0)
 
-func _get_viewport_bounds() -> Rect2:
-	return Rect2(Vector2.ZERO, OS.window_size)
-
 func _check_item_collisions():
 	var main = get_parent()
 	if not main or not ("active_items" in main):
@@ -1558,13 +1962,13 @@ func _check_item_collisions():
 
 		var dist = global_position.distance_to(item.global_position)
 		var min_dist = base_radius + item_radius
+		var is_colliding = (dist < min_dist and dist > 0.001)
 
-		if dist < min_dist and dist > 0.001:
+		if is_colliding:
 			var normal = (item.global_position - global_position).normalized()
 
 			# --- Ball vs Pet collision ---
 			if item.get("is_toy") == true:
-				# Separate positions
 				var overlap = min_dist - dist
 				item.global_position += normal * overlap * 0.6
 				global_position -= normal * overlap * 0.4
@@ -1612,6 +2016,34 @@ func _check_item_collisions():
 								toy_item.velocity = r * 0.5
 								toy_item.velocity = toy_item.velocity.clamped(600.0)
 						item.velocity = fn * 120.0
+
+func _find_closest_other_pet():
+	var main = get_parent()
+	if not main or not ("active_pets" in main):
+		return null
+	var closest = null
+	var min_d = 99999.0
+	for p in main.active_pets:
+		if is_instance_valid(p) and p != self:
+			var d = global_position.distance_to(p.global_position)
+			if d < min_d:
+				min_d = d
+				closest = p
+	return closest
+
+func _on_digging_complete():
+	var main = get_parent()
+	if not main or not ("inventory" in main):
+		return
+	var possible_materials = [
+		"ancient_fossil", "starlight_crystal", "bio_slime", 
+		"glowing_amber", "meteor_shard", "radiant_spore", "elastic_rubber"
+	]
+	var mat = possible_materials[randi() % possible_materials.size()]
+	main.inventory[mat] = main.inventory.get(mat, 0) + 1
+	if main.has_method("open_inventory") and randf() < 0.2:
+		pass # silently collected!
+
 
 	# Poop proximity sickness check
 	var poop_nearby = false

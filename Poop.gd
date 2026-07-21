@@ -13,6 +13,15 @@ var is_dragging = false
 var drag_positions = []
 var prev_mouse_pos = Vector2.ZERO
 
+# 3D coordinates
+var x_pos: float = 0.0
+var z_depth: float = 0.0
+var y_height: float = 0.0
+var z_vel: float = 0.0
+
+func get_depth_scale(z: float) -> float:
+	return lerp(1.0, 0.85, z)
+
 var ContextMenuScene = preload("res://ContextMenu.tscn")
 
 func _ready():
@@ -20,6 +29,7 @@ func _ready():
 	velocity = Vector2(rand_range(-50.0, 50.0), -120.0)
 
 func _physics_process(delta):
+	scale = Vector2.ONE
 	if is_dragging:
 		var mouse_pos = get_global_mouse_position()
 		global_position = mouse_pos
@@ -51,7 +61,7 @@ func _physics_process(delta):
 
 func _input(event):
 	if event is InputEventMouseButton:
-		var hit = event.global_position.distance_to(global_position) <= radius * 1.8
+		var hit = event.global_position.distance_to(global_position) <= radius * 1.8 * scale.x
 		if event.pressed:
 			if hit:
 				if event.button_index == BUTTON_RIGHT:
@@ -85,15 +95,15 @@ func _input(event):
 func get_click_polygon() -> PoolVector2Array:
 	# Padded polygon for passthrough — poop has a tall visual shape
 	var poly = PoolVector2Array()
-	var pad_w = radius + 8.0
-	var pad_h = radius * 1.8 + 8.0
+	var pad_w = (radius + 8.0) * scale.x
+	var pad_h = (radius * 1.8 + 8.0) * scale.x
 	for i in range(10):
 		var angle = i * 2.0 * PI / 10.0
-		poly.append(global_position + Vector2(cos(angle) * pad_w, sin(angle) * pad_h - radius * 0.4))
+		poly.append(global_position + Vector2(cos(angle) * pad_w, sin(angle) * pad_h - radius * 0.4 * scale.x))
 	return poly
 
-
 func _draw():
+
 	# Draw cartoon poop pile (layered brown circles/pill shapes)
 	var c_dark = Color("5d4037") # dark brown border/outline
 	var c_light = Color("8d6e63") # light brown body

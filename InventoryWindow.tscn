@@ -1,0 +1,73 @@
+[gd_scene load_steps=2 format=2]
+
+[ext_resource path="res://InventoryWindow.gd" type="Script" id=1]
+
+[node name="InventoryWindow" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource( 1 )
+
+[node name="Panel" type="Panel" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+margin_left = -180.0
+margin_top = -180.0
+margin_right = 180.0
+margin_bottom = 180.0
+rect_min_size = Vector2( 360, 360 )
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+custom_constants/margin_right = 15
+custom_constants/margin_top = 10
+custom_constants/margin_left = 15
+custom_constants/margin_bottom = 15
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin"]
+margin_left = 15.0
+margin_top = 10.0
+margin_right = 345.0
+margin_bottom = 345.0
+custom_constants/separation = 10
+
+[node name="TitleBar" type="HBoxContainer" parent="Panel/Margin/VBox"]
+margin_right = 330.0
+margin_bottom = 24.0
+
+[node name="Label" type="Label" parent="Panel/Margin/VBox/TitleBar"]
+margin_top = 5.0
+margin_right = 302.0
+margin_bottom = 19.0
+size_flags_horizontal = 3
+text = "🎒 Materials & Genetic Inventory"
+
+[node name="CloseBtn" type="Button" parent="Panel/Margin/VBox/TitleBar"]
+margin_left = 306.0
+margin_right = 330.0
+margin_bottom = 24.0
+rect_min_size = Vector2( 24, 24 )
+text = "✕"
+
+[node name="DnaLabel" type="Label" parent="Panel/Margin/VBox"]
+margin_top = 34.0
+margin_right = 330.0
+margin_bottom = 48.0
+text = "Genetic Material (DNA Fragments): 0"
+autowrap = true
+
+[node name="ItemList" type="ItemList" parent="Panel/Margin/VBox"]
+margin_top = 58.0
+margin_right = 330.0
+margin_bottom = 275.0
+size_flags_vertical = 3
+
+[node name="DeconstructBtn" type="Button" parent="Panel/Margin/VBox"]
+margin_top = 285.0
+margin_right = 330.0
+margin_bottom = 315.0
+rect_min_size = Vector2( 0, 30 )
+text = "Break Down Item into DNA (+5 Fragments)"
