@@ -64,6 +64,9 @@ func _ready():
 	# Instantiate panels upfront
 	_init_drawer_panels()
 
+	# Load saved inventory (or seed starter kit)
+	load_inventory()
+
 	# Initialize Pet Roster (presets + user://pets/)
 	load_pet_roster()
 
@@ -296,6 +299,79 @@ func load_pet_roster():
 			
 	if is_instance_valid(dispenser_device):
 		dispenser_device.call("populate_pet_roster", pet_roster)
+
+func save_custom_pet(pet_data: Dictionary):
+	var raw_id = pet_data.get("pet_id", "")
+	if raw_id == "":
+		raw_id = pet_data.get("pet_name", "pet_" + str(OS.get_ticks_msec()))
+	var pid = sanitize_filename(raw_id)
+	pet_data["pet_id"] = pid
+
+	var dir = Directory.new()
+	if not dir.dir_exists("user://pets"):
+		dir.make_dir_recursive("user://pets")
+	var file_path = "user://pets/" + pid + ".json"
+	var f = File.new()
+	if f.open(file_path, File.WRITE) == OK:
+		f.store_string(JSON.print(pet_data, "  "))
+		f.close()
+	load_pet_roster()
+	save_inventory()
+
+func sanitize_filename(input_name: String) -> String:
+	var clean = input_name.strip_edges()
+	var valid_str = ""
+	for i in range(clean.length()):
+		var c = clean[i]
+		if (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_' or c == '-':
+			valid_str += c
+		else:
+			valid_str += '_'
+	while valid_str.find("__") != -1:
+		valid_str = valid_str.replace("__", "_")
+	valid_str = valid_str.strip_edges("_")
+	if valid_str == "":
+		valid_str = "pet_" + str(OS.get_ticks_msec() % 10000)
+	return valid_str.to_lower()
+
+func get_custom_pets_count() -> int:
+	var count = 0
+	for p in pet_roster:
+		var pid = p.get("pet_id", "")
+		if pid != "grubby" and pid != "slinky" and pid != "glub" and pid != "gonzo":
+			count += 1
+	return count
+
+func save_inventory():
+	var f = File.new()
+	if f.open("user://inventory.json", File.WRITE) == OK:
+		f.store_string(JSON.print(inventory, "  "))
+		f.close()
+
+func load_inventory():
+	inventory.clear()
+	var f = File.new()
+	if f.file_exists("user://inventory.json"):
+		if f.open("user://inventory.json", File.READ) == OK:
+			var res = JSON.parse(f.get_as_text())
+			f.close()
+			if res.error == OK and res.result is Dictionary:
+				inventory = res.result
+	if inventory.empty():
+		inventory = {
+			"ancient_fossil": 2,
+			"radiant_spore": 2,
+			"gene_fragment": 2,
+			"adenine": 2,
+			"thymine": 2,
+			"cytosine": 2,
+			"guanine": 2,
+			"deoxyribose_sugar": 2,
+			"phosphate_group": 2,
+			"methyl_group": 2,
+			"nucleotide_polymer": 2
+		}
+		save_inventory()
 
 func summon_pet(pet_info: Dictionary):
 	var pid = pet_info.get("pet_id", "")
@@ -662,6 +738,9 @@ func cure_pets():
 func remove_item(item):
 	if item in active_items:
 		active_items.erase(item)
+		for p in active_pets:
+			if is_instance_valid(p) and p.has_method("on_item_removed"):
+				p.call("on_item_removed", item)
 		if is_instance_valid(item):
 			item.queue_free()
 

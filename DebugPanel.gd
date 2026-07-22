@@ -6,7 +6,11 @@ signal decay_multiplier_changed(value)
 signal tab_clicked(tab_id)
 
 var pet_ref = null
+var selected_pet_idx: int = 0
 
+onready var prev_pet_btn = $Panel/Margin/VBox/PetSelectorRow/PrevBtn
+onready var next_pet_btn = $Panel/Margin/VBox/PetSelectorRow/NextBtn
+onready var pet_title_label = $Panel/Margin/VBox/PetSelectorRow/PetTitleLabel
 onready var state_label = $Panel/Margin/VBox/StateLabel
 onready var decay_check = $Panel/Margin/VBox/DecayCheck
 
@@ -43,14 +47,14 @@ func _ready():
 	$Panel/Margin/VBox/TitleBar.connect("gui_input", self, "_on_titlebar_gui_input")
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
 
+	prev_pet_btn.connect("pressed", self, "_on_prev_pet_pressed")
+	next_pet_btn.connect("pressed", self, "_on_next_pet_pressed")
+
 	if tab_ear:
 		tab_ear.tab_id = "debug"
 		tab_ear.icon_text = "🐛"
 		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
 
-func _on_tab_ear_clicked(tab_id: String):
-	emit_signal("tab_clicked", tab_id)
-	
 	hunger_slider.connect("value_changed", self, "_on_slider_value_changed", ["hunger"])
 	boredom_slider.connect("value_changed", self, "_on_slider_value_changed", ["boredom"])
 	energy_slider.connect("value_changed", self, "_on_slider_value_changed", ["energy"])
@@ -65,6 +69,39 @@ func _on_tab_ear_clicked(tab_id: String):
 	speed_slider.value = 1.0
 	speed_slider.connect("value_changed", self, "_on_speed_changed")
 	decay_check.connect("toggled", self, "_on_decay_toggled")
+
+func _on_tab_ear_clicked(tab_id: String):
+	emit_signal("tab_clicked", tab_id)
+
+func _on_prev_pet_pressed():
+	selected_pet_idx -= 1
+	_update_selected_pet()
+
+func _on_next_pet_pressed():
+	selected_pet_idx += 1
+	_update_selected_pet()
+
+func _update_selected_pet():
+	var main = get_parent()
+	if not main:
+		return
+	var active_pets = main.get("active_pets")
+	var valid_pets = []
+	if active_pets != null:
+		for p in active_pets:
+			if is_instance_valid(p):
+				valid_pets.append(p)
+
+	if valid_pets.size() > 0:
+		if selected_pet_idx < 0:
+			selected_pet_idx = valid_pets.size() - 1
+		elif selected_pet_idx >= valid_pets.size():
+			selected_pet_idx = 0
+		pet_ref = valid_pets[selected_pet_idx]
+	else:
+		pet_ref = null
+		selected_pet_idx = 0
+	update_ui_from_stats()
 
 func _on_titlebar_gui_input(event):
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
@@ -85,23 +122,49 @@ func open():
 	var vp_size = get_viewport_rect().size
 	$Panel.rect_global_position = Vector2(20, (vp_size.y - $Panel.rect_size.y) / 2.0)
 	raise()
+	_update_selected_pet()
 
 func _process(_delta):
 	if visible:
 		var main = get_parent()
-		if main and ("active_pets" in main) and main.active_pets.size() > 0:
-			if not is_instance_valid(pet_ref) or not (pet_ref in main.active_pets):
-				pet_ref = main.active_pets[0]
+		if main and ("active_pets" in main):
+			var valid_pets = []
+			for p in main.active_pets:
+				if is_instance_valid(p):
+					valid_pets.append(p)
+					
+			if valid_pets.size() > 0:
+				if not is_instance_valid(pet_ref) or not (pet_ref in valid_pets):
+					_update_selected_pet()
+				else:
+					update_ui_from_stats()
+			else:
+				pet_ref = null
+				update_ui_from_stats()
+
 func setup(pet):
 	pet_ref = pet
-	if is_instance_valid(pet_ref) and pet_ref.stats:
-		update_ui_from_stats()
+	update_ui_from_stats()
 
 func update_ui_from_stats():
+	var main = get_parent()
+	var valid_count = 0
+	if main and ("active_pets" in main):
+		for p in main.active_pets:
+			if is_instance_valid(p):
+				valid_count += 1
+
+	prev_pet_btn.disabled = (valid_count <= 1)
+	next_pet_btn.disabled = (valid_count <= 1)
+
 	if not is_instance_valid(pet_ref) or not pet_ref.stats:
+		pet_title_label.text = "Pet: None"
+		state_label.text = "State: DISPENSER RESTING"
 		return
+
 	var stats = pet_ref.stats
-	state_label.text = "Pet: %s | State: %d" % [pet_ref.pet_name, pet_ref.current_state]
+	pet_title_label.text = "Pet: %s" % pet_ref.pet_name
+	state_label.text = "State: %d" % pet_ref.current_state
 	hunger_slider.value = stats.hunger
 	hunger_label.text = "Hunger (%.1f%%)" % stats.hunger
 	boredom_slider.value = stats.boredom
@@ -121,7 +184,6 @@ func _on_slider_value_changed(val, drive_name):
 	emit_signal("drive_changed", drive_name, val)
 	if is_instance_valid(pet_ref) and pet_ref.stats:
 		pet_ref.stats.set(drive_name, val)
-		update_ui_from_stats()
 
 func _on_decay_toggled(button_pressed):
 	emit_signal("decay_toggled", button_pressed)

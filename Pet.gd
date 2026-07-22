@@ -634,9 +634,18 @@ func cure():
 	_change_state(State.WANDER)
 
 func on_food_spawned(food):
-	if current_state != State.SLEEPING:
-		target_item = food
-		_change_state(State.CHASE_ITEM)
+	if current_state == State.SLEEPING or current_state == State.SICK or current_state == State.RETURNING_TO_DISPENSER:
+		return
+	if stats and stats.hunger >= 95.0:
+		return # Full (>=95% fullness): ignores food and treats completely!
+	_scan_for_food_or_treat()
+
+func on_item_removed(item):
+	if target_item == item:
+		target_item = null
+		if not _scan_for_food_or_treat():
+			if current_state == State.CHASE_ITEM:
+				_change_state(State.WANDER)
 
 func on_toy_spawned(toy):
 	if current_state != State.SLEEPING and current_state != State.CHASE_ITEM:
@@ -680,17 +689,35 @@ func _evaluate_states(delta):
 	if current_state == State.RETURNING_TO_DISPENSER or current_state == State.EMERGING_FROM_DISPENSER or current_state == State.SELF_DISPENSE:
 		return
 		
-	# Self-Dispense override (steal food if neglected and hungry)
+	# 1. Starving / Hiding & Sad override (< 10% hunger)
+	if stats.hunger < 10.0 and current_state != State.EATING and current_state != State.SLEEPING:
+		var close_food = _find_closest_food_or_treat()
+		if is_instance_valid(close_food):
+			target_item = close_food
+			_change_state(State.CHASE_ITEM)
+		elif current_state != State.SICK:
+			_show_learning_emote("😭")
+			_change_state(State.SICK)
+		return
+
+	# 2. Begging override at panel/dispenser tab (at 30% hunger)
+	if stats.hunger < 30.0 and current_state != State.EATING and current_state != State.CHASE_ITEM and current_state != State.BEGGING and current_state != State.SLEEPING:
+		if _scan_for_food_or_treat():
+			return
+		_change_state(State.BEGGING)
+		return
+
+	# 3. Active Food searching override (< 50% hunger)
+	if stats.hunger < 50.0 and (current_state == State.IDLE or current_state == State.WANDER):
+		if _scan_for_food_or_treat():
+			return
+			
+	# Self-Dispense override (steal food if neglected and starving)
 	if stats.hunger < 20.0 and current_state != State.EATING and current_state != State.CHASE_ITEM:
-		var food = _find_closest_item(true)
+		var food = _find_closest_food_or_treat()
 		if not is_instance_valid(food):
 			_change_state(State.SELF_DISPENSE)
 			return
-			
-	# Begging override: actively chase cursor if hungry
-	if stats.hunger < 35.0 and (current_state == State.IDLE or current_state == State.WANDER):
-		_change_state(State.CHASE_CURSOR)
-		return
 		
 	# Global state overrides
 	# Sleep override
@@ -726,7 +753,7 @@ func _evaluate_states(delta):
 		else:
 			sick_auto_return_timer = 0.0
 
-		if stats.wellness >= 70.0:
+		if stats.wellness >= 70.0 and stats.hunger >= 10.0:
 			sick_auto_return_timer = 0.0
 			_change_state(State.IDLE)
 		return
@@ -753,12 +780,10 @@ func _evaluate_states(delta):
 	# State specific transitions
 	match current_state:
 		State.IDLE:
-			var food = _find_closest_item(true)
+			if _scan_for_food_or_treat():
+				return
 			var toy = _find_closest_item(false)
-			if stats.hunger < 50.0 and is_instance_valid(food):
-				target_item = food
-				_change_state(State.CHASE_ITEM)
-			elif (stats.boredom < 60.0 or (randf() < 0.003 and stats.boredom < 90.0)) and is_instance_valid(toy):
+			if (stats.boredom < 60.0 or (randf() < 0.003 and stats.boredom < 90.0)) and is_instance_valid(toy):
 				target_item = toy
 				_change_state(State.CHASE_ITEM)
 			elif stats.affection < 50.0:
@@ -776,13 +801,11 @@ func _evaluate_states(delta):
 				_change_state(State.WANDER)
 				
 		State.WANDER:
-			var food = _find_closest_item(true)
+			if _scan_for_food_or_treat():
+				return
 			var toy = _find_closest_item(false)
 			var other_pet = _find_closest_other_pet()
-			if stats.hunger < 50.0 and is_instance_valid(food):
-				target_item = food
-				_change_state(State.CHASE_ITEM)
-			elif (stats.boredom < 60.0 or (randf() < 0.003 and stats.boredom < 90.0)) and is_instance_valid(toy):
+			if (stats.boredom < 60.0 or (randf() < 0.003 and stats.boredom < 90.0)) and is_instance_valid(toy):
 				target_item = toy
 				_change_state(State.CHASE_ITEM)
 			elif is_instance_valid(other_pet) and global_position.distance_to(other_pet.global_position) < base_radius * 3.5:
@@ -793,6 +816,12 @@ func _evaluate_states(delta):
 			elif stats.affection < 50.0:
 				_change_state(State.CHASE_CURSOR)
 			elif state_timer > rand_range(5.0, 10.0):
+				_change_state(State.IDLE)
+
+		State.BEGGING:
+			if _scan_for_food_or_treat():
+				return
+			if stats.hunger >= 50.0:
 				_change_state(State.IDLE)
 
 		State.PLAY_WITH_PET:
@@ -906,6 +935,9 @@ func _change_state(new_state: int):
 		State.WINDOW_SIT:
 			center_vel = Vector2.ZERO
 			window_sit_duration = rand_range(8.0, 20.0)
+		State.BEGGING:
+			center_vel = Vector2.ZERO
+			_show_learning_emote("🥺")
 
 
 func _update_state_behavior(delta):
@@ -963,11 +995,41 @@ func _update_state_behavior(delta):
 				var to_nozzle = (nozzle_pos - mouse_pos).normalized()
 				Input.warp_mouse_position(get_viewport().get_mouse_position() + to_nozzle * 2.0)
 			
+		State.BEGGING:
+			var main = get_parent()
+			var bounds = _get_viewport_bounds()
+			var target_pos = Vector2(bounds.end.x - 40.0, bounds.position.y + bounds.size.y * 0.1)
+			if main and "dispenser_device" in main and is_instance_valid(main.dispenser_device):
+				target_pos = main.dispenser_device.get_nozzle_global_position()
+			
+			var dir = (target_pos - global_position).normalized()
+			var dist = global_position.distance_to(target_pos)
+			if dist > 35.0:
+				center_vel = dir * 120.0
+			else:
+				center_vel = Vector2.ZERO
+				head_shake_timer = 0.2
+				head_shake_intensity = 3.0
+				if fmod(state_timer, 2.5) < delta:
+					_show_learning_emote("🍖" if randf() < 0.5 else "🥺")
+
+			if _scan_for_food_or_treat():
+				return
+
 		State.CHASE_ITEM:
 			if is_instance_valid(target_item):
 				var target_pos = target_item.global_position
 				var dir = (target_pos - global_position).normalized()
 				var speed = 200.0
+
+				# Competition check: if another pet is targeting the exact same treat/food, HURRY!
+				var main_node = get_parent()
+				if main_node and ("active_pets" in main_node):
+					for other_p in main_node.active_pets:
+						if is_instance_valid(other_p) and other_p != self and other_p.target_item == target_item:
+							speed = 330.0 # Race / hurry speed boost!
+							break
+
 				center_vel = lerp(center_vel, dir * speed, 0.1)
 				
 				# Check arrival at item
@@ -2170,13 +2232,25 @@ func _find_closest_food_or_treat() -> Node2D:
 	var main = get_parent()
 	if not main or not ("active_items" in main):
 		return null
+	if stats and stats.hunger >= 95.0:
+		return null # >= 95% full -> ignores treats and food completely!
+
 	var closest = null
 	var min_d = 99999.0
+	var allow_regular_food = (stats == null or stats.hunger < 50.0)
+
 	for item in main.active_items:
 		if is_instance_valid(item):
-			var is_food = item.get("is_food") == true or item.filename.find("Food") != -1
-			var is_treat = item.get("is_treat") == true
-			if is_food or is_treat:
+			var is_treat = (item.get("is_treat") == true)
+			var is_food = (item.get("is_food") == true or item.filename.find("Food") != -1)
+
+			var matches = false
+			if is_treat:
+				matches = true # Below 95% hunger -> pursues treats!
+			elif is_food and allow_regular_food:
+				matches = true # Below 50% hunger -> pursues regular food!
+
+			if matches:
 				var d = global_position.distance_to(item.global_position)
 				if d < min_d:
 					min_d = d

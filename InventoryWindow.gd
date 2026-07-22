@@ -108,6 +108,8 @@ func _on_deconstruct_pressed():
 			for frag in yield_dict.keys():
 				main.inventory[frag] = main.inventory.get(frag, 0) + yield_dict[frag]
 				
+			if main.has_method("save_inventory"):
+				main.save_inventory()
 			refresh()
 
 func get_panel_rect() -> Rect2:

@@ -3,10 +3,9 @@ extends Control
 signal pet_hatched(pet_data)
 signal tab_clicked(tab_id)
 
-onready var fragment_select_option = $Panel/Margin/VBox/Controls/FragOption
-onready var add_frag_btn = $Panel/Margin/VBox/Controls/AddBtn
-onready var remove_frag_btn = $Panel/Margin/VBox/Controls/RemoveBtn
-onready var clear_strand_btn = $Panel/Margin/VBox/Controls/ClearBtn
+onready var frag_grid = $Panel/Margin/VBox/FragGrid
+onready var remove_frag_btn = $Panel/Margin/VBox/ActionRow/RemoveBtn
+onready var clear_strand_btn = $Panel/Margin/VBox/ActionRow/ClearBtn
 onready var tab_ear = $PanelTabEar
 
 onready var strand_list = $Panel/Margin/VBox/StrandList
@@ -25,9 +24,9 @@ var fragment_types = [
 
 var body_strains = ["blob", "slinky", "aquatic", "alien"]
 var dna_strand = [] # Array of fragment_type strings
+var frag_buttons = {}
 
 func _ready():
-	add_frag_btn.connect("pressed", self, "_on_add_frag_pressed")
 	remove_frag_btn.connect("pressed", self, "_on_remove_frag_pressed")
 	clear_strand_btn.connect("pressed", self, "_on_clear_strand_pressed")
 	hatch_btn.connect("pressed", self, "_on_hatch_pressed")
@@ -35,9 +34,7 @@ func _ready():
 	$Panel/Margin/VBox/TitleBar.connect("gui_input", self, "_on_titlebar_gui_input")
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	
-	fragment_select_option.clear()
-	for f in fragment_types:
-		fragment_select_option.add_item(f.replace("_", " ").capitalize())
+	_build_fragment_grid_buttons()
 		
 	if tab_ear:
 		tab_ear.tab_id = "genetics"
@@ -45,6 +42,19 @@ func _ready():
 		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
 
 	refresh_strand_ui()
+
+func _build_fragment_grid_buttons():
+	for child in frag_grid.get_children():
+		child.queue_free()
+	frag_buttons.clear()
+
+	for f_name in fragment_types:
+		var btn = Button.new()
+		btn.rect_min_size = Vector2(0, 32)
+		btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		btn.connect("pressed", self, "_on_frag_btn_pressed", [f_name])
+		frag_grid.add_child(btn)
+		frag_buttons[f_name] = btn
 
 func _on_tab_ear_clicked(tab_id: String):
 	emit_signal("tab_clicked", tab_id)
@@ -70,27 +80,22 @@ func open():
 	raise()
 	refresh_strand_ui()
 
-func _on_add_frag_pressed():
-	var idx = fragment_select_option.selected
-	if idx >= 0 and idx < fragment_types.size():
-		var f_name = fragment_types[idx]
-		
-		# Check inventory availability
-		var main = get_parent()
-		var inv = main.inventory if (main and "inventory" in main) else {}
-		var custom_count = 0
-		if main and main.has_method("get_custom_pets_count"):
-			custom_count = main.get_custom_pets_count()
-			
-		if custom_count > 0 and inv.get(f_name, 0) < 1:
-			status_label.text = "⚠️ No %s fragments in inventory! Dig up items & deconstruct." % f_name.replace("_", " ").capitalize()
-			return
-			
-		if custom_count > 0:
-			inv[f_name] = inv.get(f_name, 0) - 1
-			
-		dna_strand.append(f_name)
-		refresh_strand_ui()
+func _on_frag_btn_pressed(f_name: String):
+	var main = get_parent()
+	var inv = main.inventory if (main and "inventory" in main) else {}
+
+	var available_count = inv.get(f_name, 0)
+	if available_count < 1:
+		status_label.text = "⚠️ No %s fragments in inventory! Dig up items & deconstruct." % f_name.replace("_", " ").capitalize()
+		return
+
+	# Deduct from inventory
+	inv[f_name] = available_count - 1
+	if main and main.has_method("save_inventory"):
+		main.save_inventory()
+
+	dna_strand.append(f_name)
+	refresh_strand_ui()
 
 func _on_remove_frag_pressed():
 	if dna_strand.size() > 0:
@@ -98,6 +103,8 @@ func _on_remove_frag_pressed():
 		var main = get_parent()
 		if main and ("inventory" in main):
 			main.inventory[removed] = main.inventory.get(removed, 0) + 1
+			if main.has_method("save_inventory"):
+				main.save_inventory()
 		refresh_strand_ui()
 
 func _on_clear_strand_pressed():
@@ -106,6 +113,8 @@ func _on_clear_strand_pressed():
 		if main and ("inventory" in main):
 			main.inventory[f] = main.inventory.get(f, 0) + 1
 	dna_strand.clear()
+	if main and main.has_method("save_inventory"):
+		main.save_inventory()
 	refresh_strand_ui()
 
 func _generate_strand_seed() -> int:
@@ -115,14 +124,29 @@ func _generate_strand_seed() -> int:
 	return int(abs(seq_str.hash()))
 
 func refresh_strand_ui():
+	var main = get_parent()
+	var inv = main.inventory if (main and "inventory" in main) else {}
+
+	# Refresh interactive DNA fragment buttons with live inventory stock
+	for f_name in fragment_types:
+		if frag_buttons.has(f_name):
+			var btn = frag_buttons[f_name]
+			var count = inv.get(f_name, 0)
+			var nice_name = f_name.replace("_", " ").capitalize()
+			btn.text = "🧬 %s (%d)" % [nice_name, count]
+			btn.disabled = (count <= 0)
+
 	strand_list.clear()
 	for i in range(dna_strand.size()):
 		var f = dna_strand[i]
 		strand_list.add_item("Base %d: 🧬 %s" % [i + 1, f.replace("_", " ").capitalize()])
-		
+
 	var seed_val = _generate_strand_seed()
 	seed_label.text = "Strand Length: %d Bases | Genetic Seed: #%08X" % [dna_strand.size(), seed_val]
-	status_label.text = "Build your DNA strand using fragments. Traits remain a mystery until hatching!"
+	if dna_strand.size() == 0:
+		status_label.text = "Tap available DNA fragment buttons to build your strand!"
+	else:
+		status_label.text = "Strand ready! Traits remain a mystery until hatching!"
 
 func _on_hatch_pressed():
 	if dna_strand.size() == 0:
@@ -156,8 +180,9 @@ func _on_hatch_pressed():
 	var pattern_options = ["solid", "tiger_stripes", "leopard_spots", "galaxy_swirl", "belly_patch"]
 	var pupil_options = ["round", "cat_eye", "lizard_eye", "spider_eye"]
 	
+	var pet_id_safe = sanitize_filename(pet_name)
 	var pet_data = {
-		"pet_id": pet_name.to_lower().replace(" ", "_"),
+		"pet_id": pet_id_safe,
 		"pet_name": pet_name,
 		"genetic_seed": seed_val,
 		"element_type_idx": elem_idx,
@@ -221,3 +246,19 @@ func get_tab_rect() -> Rect2:
 	if is_instance_valid(tab_ear):
 		return tab_ear.get_tab_rect()
 	return Rect2()
+
+func sanitize_filename(input_name: String) -> String:
+	var clean = input_name.strip_edges()
+	var valid_str = ""
+	for i in range(clean.length()):
+		var c = clean[i]
+		if (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_' or c == '-':
+			valid_str += c
+		else:
+			valid_str += '_'
+	while valid_str.find("__") != -1:
+		valid_str = valid_str.replace("__", "_")
+	valid_str = valid_str.strip_edges("_")
+	if valid_str == "":
+		valid_str = "orbpal_" + str(OS.get_ticks_msec() % 10000)
+	return valid_str.to_lower()
