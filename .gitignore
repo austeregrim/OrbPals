@@ -1,0 +1,16 @@
+# Godot 3.x / 4.x ignored files
+.import/
+export_presets.cfg
+*.import
+
+# Android Release Keystores
+*.keystore
+*.jks
+
+# Build / Export Outputs
+../OrbPals_Exports/
+OrbPals_Exports/
+*.apk
+*.aab
+*.exe
+*.x86_64
