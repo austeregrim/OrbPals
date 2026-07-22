@@ -6,7 +6,7 @@
 [node name="SettingsWindow" type="Control"]
 margin_right = 340.0
 margin_bottom = 390.0
-rect_min_size = Vector2( 340, 390 )
+rect_min_size = Vector2( 340, 180 )
 script = ExtResource( 1 )
 
 [node name="PanelTabEar" parent="." instance=ExtResource( 2 )]
@@ -15,7 +15,7 @@ margin_top = 0.0
 margin_right = 0.0
 margin_bottom = 44.0
 tab_id = "settings"
-icon_text = "⚙️"
+icon_text = "SETT"
 
 [node name="Panel" type="Panel" parent="."]
 anchor_right = 1.0
@@ -46,7 +46,8 @@ margin_top = 7.0
 margin_right = 282.0
 margin_bottom = 21.0
 size_flags_horizontal = 3
-text = "⚙ Technical Settings"
+text = "Technical Settings"
+
 valign = 1
 
 [node name="PlayPenRow" type="HBoxContainer" parent="Panel/Margin/VBox"]

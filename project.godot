@@ -36,12 +36,13 @@ Settings="*res://Settings.gd"
 [display]
 
 window/size/borderless=true
-window/size/always_on_top=true
+window/size/always_on_top=false
 window/per_pixel_transparency/allowed=true
 window/per_pixel_transparency/enabled=true
 window/stretch/mode="2d"
 window/stretch/aspect="expand"
 window/size/transparent=true
+window/handheld/orientation="sensor"
 
 [input_devices]
 

@@ -7,6 +7,7 @@ onready var deconstruct_btn = $Panel/Margin/VBox/DeconstructBtn
 onready var dna_label = $Panel/Margin/VBox/DnaLabel
 onready var tab_ear = $PanelTabEar
 
+var is_undocked = false
 var is_dragging = false
 var drag_offset = Vector2.ZERO
 
@@ -26,32 +27,61 @@ var material_breakdown = {
 	"gene_fragment": {"nucleotide_polymer": 2, "adenine": 1}
 }
 
+onready var vbox = $Panel/Margin/VBox
+var undock_btn = null
+
 func _ready():
+	_ensure_scroll_container()
 	deconstruct_btn.connect("pressed", self, "_on_deconstruct_pressed")
-	$Panel/Margin/VBox/TitleBar.connect("gui_input", self, "_on_titlebar_gui_input")
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
+
+	if vbox and vbox.has_node("TitleBar"):
+		var tb = vbox.get_node("TitleBar")
+		tb.connect("gui_input", self, "_on_titlebar_gui_input")
+		if not undock_btn:
+			undock_btn = Button.new()
+			undock_btn.name = "UndockBtn"
+			undock_btn.text = "[Pin]"
+			undock_btn.flat = true
+			undock_btn.hint_tooltip = "Undock / Dock Panel"
+			undock_btn.connect("pressed", self, "toggle_undock")
+			tb.add_child(undock_btn)
 
 	if tab_ear:
 		tab_ear.tab_id = "inventory"
-		tab_ear.icon_text = "📦"
+		tab_ear.icon_text = "INVT"
 		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
+
+func toggle_undock():
+	is_undocked = not is_undocked
+	_update_undock_button_ui()
+	var main = get_parent()
+	if not is_undocked and main and main.has_method("_reposition_all_side_panels"):
+		main.call("_reposition_all_side_panels", true)
+
+func _update_undock_button_ui():
+	if undock_btn:
+		undock_btn.text = "[Unpin]" if is_undocked else "[Pin]"
 
 func _on_tab_ear_clicked(tab_id: String):
 	emit_signal("tab_clicked", tab_id)
 
 func _on_titlebar_gui_input(event):
+	if not is_undocked:
+		return
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
 		if event.pressed:
 			is_dragging = true
-			drag_offset = event.global_position - $Panel.rect_global_position
+			drag_offset = event.global_position - rect_global_position
 		else:
 			is_dragging = false
-	elif event is InputEventMouseMotion and is_dragging:
+	elif event is InputEventMouseMotion and is_dragging and is_undocked:
 		var new_pos = event.global_position - drag_offset
 		var vp_size = get_viewport_rect().size
-		new_pos.x = clamp(new_pos.x, 10, max(10, vp_size.x - $Panel.rect_size.x - 10))
-		new_pos.y = clamp(new_pos.y, 10, max(10, vp_size.y - $Panel.rect_size.y - 10))
-		$Panel.rect_global_position = new_pos
+		new_pos.x = clamp(new_pos.x, 0, max(0, vp_size.x - rect_size.x))
+		new_pos.y = clamp(new_pos.y, 0, max(0, vp_size.y - rect_size.y))
+		rect_global_position = new_pos
+
 
 func open():
 	visible = true
@@ -69,7 +99,7 @@ func refresh():
 	var inv = main.inventory
 	
 	# Display genetic fragment counts summary
-	var summary_text = "🧬 GENETIC FRAGMENTS:\n"
+	var summary_text = "GENETIC FRAGMENTS:\n"
 	summary_text += "A: %d | T: %d | C: %d | G: %d\n" % [
 		inv.get("adenine", 0), inv.get("thymine", 0),
 		inv.get("cytosine", 0), inv.get("guanine", 0)
@@ -86,7 +116,7 @@ func refresh():
 			continue
 		var count = inv[item_name]
 		if count > 0:
-			item_list.add_item("📦 %s (x%d)" % [item_name.replace("_", " ").capitalize(), count])
+			item_list.add_item("%s (x%d)" % [item_name.replace("_", " ").capitalize(), count])
 
 func _on_deconstruct_pressed():
 	var selected = item_list.get_selected_items()
@@ -94,7 +124,8 @@ func _on_deconstruct_pressed():
 		return
 	var idx = selected[0]
 	var text = item_list.get_item_text(idx)
-	var raw_name = text.replace("📦 ", "").split(" (x")[0].to_lower().replace(" ", "_")
+	var raw_name = text.split(" (x")[0].to_lower().replace(" ", "_")
+
 	
 	var main = get_parent()
 	if main and ("inventory" in main) and main.inventory.has(raw_name):
@@ -119,3 +150,22 @@ func get_tab_rect() -> Rect2:
 	if is_instance_valid(tab_ear):
 		return tab_ear.get_tab_rect()
 	return Rect2()
+
+func _ensure_scroll_container():
+	var margin = get_node_or_null("Panel/Margin")
+	if not margin:
+		return
+	var vbox = margin.get_node_or_null("VBox")
+	if vbox and not vbox.get_parent() is ScrollContainer:
+		margin.remove_child(vbox)
+		var scroll = ScrollContainer.new()
+		scroll.name = "ScrollContainer"
+		scroll.anchor_right = 1.0
+		scroll.anchor_bottom = 1.0
+		scroll.size_flags_horizontal = SIZE_EXPAND_FILL
+		scroll.size_flags_vertical = SIZE_EXPAND_FILL
+		scroll.scroll_horizontal_enabled = false
+		margin.add_child(scroll)
+		scroll.add_child(vbox)
+		vbox.size_flags_horizontal = SIZE_EXPAND_FILL
+		vbox.size_flags_vertical = SIZE_EXPAND_FILL

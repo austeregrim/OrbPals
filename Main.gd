@@ -29,8 +29,8 @@ var last_passthrough_polygon = PoolVector2Array()
 var desktop_window_manager = null
 var relationship_manager = null
 
-# Active drawer tab state ("dispenser", "needs", "genetics", "inventory", "settings", "debug", or "")
-var active_drawer_tab = ""
+# Active open drawer tabs map (tab_id -> bool)
+var active_open_tabs = {}
 
 # Ordered list of all tab-capable side panels
 var side_panels_order = []
@@ -91,12 +91,15 @@ func _init_drawer_panels():
 	dispenser_device = DispenserDeviceScene.instance()
 	add_child(dispenser_device)
 	dispenser_device.connect("spawn_food", self, "spawn_food")
+	if dispenser_device.has_signal("spawn_bottle"):
+		dispenser_device.connect("spawn_bottle", self, "spawn_bottle")
 	dispenser_device.connect("spawn_toy", self, "spawn_toy")
 	dispenser_device.connect("use_mop_tool", self, "use_mop_tool")
 	dispenser_device.connect("summon_pet", self, "summon_pet")
 	dispenser_device.connect("recall_pet", self, "recall_pet")
 	dispenser_device.connect("recall_all_pets", self, "recall_all_pets")
 	dispenser_device.connect("euthanize_pet", self, "euthanize_pet")
+
 
 	# 2. Needs Panel (🐾)
 	needs_panel = NeedsPanelScene.instance()
@@ -148,13 +151,32 @@ func _init_drawer_panels():
 func _on_debug_unlocked():
 	_reposition_all_side_panels(true)
 
+func is_tab_open(tab_id: String) -> bool:
+	return active_open_tabs.get(tab_id, false)
+
 func _reposition_all_side_panels(animated: bool = false):
 	var vp = get_viewport_rect().size
-	var top_start_y = vp.y * 0.05 # 1/20th down from top!
+	if vp.x <= 0 or vp.y <= 0:
+		return
+
+	var pref_sizes = {
+		"dispenser": Vector2(330, 240),
+		"needs": Vector2(260, 230),
+		"genetics": Vector2(460, 540),
+		"inventory": Vector2(360, 360),
+		"settings": Vector2(340, 390),
+		"debug": Vector2(340, 360)
+	}
+
+	var total_tabs = side_panels_order.size()
+	var top_start_y = 30.0
 	var tab_height = 44.0
 	var tab_spacing = 6.0
 
-	for i in range(side_panels_order.size()):
+	var max_allowed_w = max(200.0, vp.x - 50.0)
+	var right_idx = 0
+
+	for i in range(total_tabs):
 		var entry = side_panels_order[i]
 		var tab_id = entry["id"]
 		var panel = entry["panel"]
@@ -162,11 +184,33 @@ func _reposition_all_side_panels(animated: bool = false):
 		if not is_instance_valid(panel):
 			continue
 
-		var tab_y = top_start_y + i * (tab_height + tab_spacing)
-		var is_open = (active_drawer_tab == tab_id)
+		panel.raise()
 
-		var target_x = vp.x - panel.rect_size.x if is_open else vp.x
-		var target_pos = Vector2(target_x, tab_y)
+		var pref = pref_sizes.get(tab_id, Vector2(300, 300))
+		var panel_w = min(pref.x, max_allowed_w)
+		var is_open = is_tab_open(tab_id)
+
+		var tab_y = top_start_y
+		var target_x = 0.0
+
+		if tab_id == "debug":
+			# LEFT SIDE PANEL
+			tab_y = top_start_y
+			target_x = 0.0 if is_open else -panel_w
+		else:
+			# RIGHT SIDE PANELS
+			tab_y = top_start_y + right_idx * (tab_height + tab_spacing)
+			right_idx += 1
+			target_x = vp.x - panel_w if is_open else vp.x
+
+		var target_y = tab_y
+		var panel_h = min(pref.y, max(150.0, vp.y - target_y - 10.0))
+		if panel_h < pref.y and (target_y + pref.y > vp.y - 10.0):
+			target_y = max(10.0, vp.y - pref.y - 10.0)
+			panel_h = min(pref.y, max(150.0, vp.y - target_y - 10.0))
+
+		panel.rect_size = Vector2(panel_w, panel_h)
+		var target_pos = Vector2(target_x, target_y)
 
 		# Visibility check: Debug panel is only visible if Settings.debug_unlocked is true
 		if tab_id == "debug":
@@ -178,6 +222,13 @@ func _reposition_all_side_panels(animated: bool = false):
 		if "tab_ear" in panel and is_instance_valid(panel.tab_ear):
 			panel.tab_ear.set_active(is_open)
 
+		# If panel is open and currently undocked, keep its custom undocked position!
+		if is_open and ("is_undocked" in panel) and panel.is_undocked:
+			var undocked_x = clamp(panel.rect_global_position.x, 10.0, max(10.0, vp.x - panel.rect_size.x - 10.0))
+			var undocked_y = clamp(panel.rect_global_position.y, 10.0, max(10.0, vp.y - panel.rect_size.y - 10.0))
+			panel.rect_global_position = Vector2(undocked_x, undocked_y)
+			continue
+
 		if animated and panel.visible:
 			var t = create_tween()
 			if t:
@@ -187,24 +238,39 @@ func _reposition_all_side_panels(animated: bool = false):
 		else:
 			panel.rect_global_position = target_pos
 
+	# Raise all open panels so active open panels sit in front
+	for entry in side_panels_order:
+		var tid = entry["id"]
+		var p = entry["panel"]
+		if is_instance_valid(p) and is_tab_open(tid):
+			p.raise()
+
 func toggle_drawer_panel(tab_name: String):
 	if tab_name == "debug" and not Settings.debug_unlocked:
 		return
 
-	if active_drawer_tab == tab_name:
-		# Close currently open panel
-		active_drawer_tab = ""
+	var panel = _get_panel_for_tab(tab_name)
+	if not panel:
+		return
+
+	var currently_open = is_tab_open(tab_name)
+	if currently_open:
+		# Close panel (if undocked, re-dock back to drawer)
+		if ("is_undocked" in panel) and panel.is_undocked:
+			panel.is_undocked = false
+			if panel.has_method("_update_undock_button_ui"):
+				panel.call("_update_undock_button_ui")
+		active_open_tabs[tab_name] = false
 	else:
-		active_drawer_tab = tab_name
-		var panel = _get_panel_for_tab(tab_name)
-		if panel:
-			panel.raise()
-			if tab_name == "inventory" and panel.has_method("refresh"):
-				panel.call("refresh")
-			elif tab_name == "settings" and panel.has_method("setup_ui"):
-				panel.call("setup_ui")
-			elif tab_name == "debug" and active_pets.size() > 0 and panel.has_method("setup"):
-				panel.call("setup", active_pets[0])
+		# Open panel without closing other open panels!
+		active_open_tabs[tab_name] = true
+		panel.raise()
+		if tab_name == "inventory" and panel.has_method("refresh"):
+			panel.call("refresh")
+		elif tab_name == "settings" and panel.has_method("setup_ui"):
+			panel.call("setup_ui")
+		elif tab_name == "debug" and active_pets.size() > 0 and panel.has_method("setup"):
+			panel.call("setup", active_pets[0])
 
 	_reposition_all_side_panels(true)
 
@@ -480,8 +546,8 @@ func _process(delta):
 				if tr.size.x > 0:
 					polygons.append(_rect_to_poly(tr))
 			
-			# If this is the active open panel, include its main panel rect
-			if active_drawer_tab == tab_id and panel.has_method("get_panel_rect"):
+			# If this is an active open panel, include its main panel rect
+			if is_tab_open(tab_id) and panel.has_method("get_panel_rect"):
 				polygons.append(_rect_to_poly(panel.call("get_panel_rect")))
 
 	# 3. Popups & ContextMenus
@@ -562,6 +628,8 @@ func apply_window_settings():
 		Engine.iterations_per_second = Settings.target_fps
 	else:
 		Engine.iterations_per_second = 60
+
+	get_tree().set_screen_stretch(SceneTree.STRETCH_MODE_2D, SceneTree.STRETCH_ASPECT_EXPAND, Vector2(1024, 768))
 
 	if Settings.play_pen_mode or OS.get_name() == "Android":
 		OS.window_borderless = false
@@ -721,6 +789,17 @@ func spawn_food(pos: Vector2, is_treat: bool = false):
 		if is_instance_valid(p) and p.has_method("on_food_spawned"):
 			p.call("on_food_spawned", food)
 
+func spawn_bottle(pos: Vector2):
+	var bottle = FoodScene.instance()
+	bottle.is_bottle = true
+	bottle.global_position = pos
+	add_child(bottle)
+	active_items.append(bottle)
+	for p in active_pets:
+		if is_instance_valid(p) and p.has_method("on_food_spawned"):
+			p.call("on_food_spawned", bottle)
+
+
 func spawn_toy(pos: Vector2):
 	var toy = ToyScene.instance()
 	toy.global_position = pos
@@ -812,7 +891,10 @@ func save_active_pets():
 				"wellness": p.stats.wellness if p.stats else 100.0,
 				"toilet": p.stats.toilet if p.stats else 0.0,
 				"life_stage": p.life_stage,
-				"time_outside": p.time_outside_dispenser_seconds
+				"time_outside": p.time_outside_dispenser_seconds,
+				"weight": p.weight,
+				"bored_eater": p.bored_eater,
+				"decay_modifiers": p.stats.decay_modifiers if p.stats else {}
 			}
 			pet_list.append(p_dict)
 	
@@ -852,11 +934,16 @@ func restore_active_pets():
 								p.stats.agitation = p_dict.get("agitation", 0.0)
 								p.stats.wellness = p_dict.get("wellness", 100.0)
 								p.stats.toilet = p_dict.get("toilet", 0.0)
+								if p_dict.has("decay_modifiers"):
+									p.stats.decay_modifiers = p_dict["decay_modifiers"]
 							p.life_stage = p_dict.get("life_stage", "adult")
 							p.time_outside_dispenser_seconds = p_dict.get("time_outside", 0.0)
+							p.weight = p_dict.get("weight", 1.0)
+							p.bored_eater = p_dict.get("bored_eater", false)
 							p.transition_scale = 1.0
 							if p.has_method("_change_state"):
 								p.call("_change_state", 0) # State.IDLE
+
 							
 							# Reset soft body points and trailing segments to full 1.0 scale
 							for pt_i in range(p.point_positions.size()):

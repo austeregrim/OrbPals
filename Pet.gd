@@ -55,8 +55,11 @@ var pattern_color: Color = Color("333333")
 var pupil_shape: String = "circle" # "circle", "cat_slit", "star", "heart", "plus"
 var has_cheeks: bool = true
 var cheek_color: Color = Color("ff6688")
+var weight: float = 1.0 # 0.7 (lean) to 1.3 (chubby)
+var bored_eater: bool = false # genetic trait causing pet to eat when bored
 
 # Multi-pet social & digging
+
 var partner_pet = null
 var social_timer: float = 0.0
 var dig_timer: float = 0.0
@@ -245,7 +248,7 @@ func _physics_process(delta):
 	# 4. Center node movement
 	var bounds = _get_viewport_bounds()
 	if is_dragging:
-		var mouse_pos = get_global_mouse_position()
+		var mouse_pos = prev_mouse_pos if prev_mouse_pos != Vector2.ZERO else get_global_mouse_position()
 		global_position = mouse_pos
 		center_vel = Vector2.ZERO
 		
@@ -264,15 +267,27 @@ func _physics_process(delta):
 	else:
 		# Physics movement
 		var apply_grav = is_falling or current_state == State.EMERGING_FROM_DISPENSER
-		
 		if apply_grav:
 			center_vel.y += gravity * delta
-			
+
 		# Apply friction
 		center_vel *= 0.98
-		
+
 		# Apply velocity
 		global_position += center_vel * delta
+		
+		# Track time outside dispenser and progress life stages
+		if current_state != State.RETURNING_TO_DISPENSER and current_state != State.EMERGING_FROM_DISPENSER:
+			time_outside_dispenser_seconds += delta
+			if life_stage == "infant" or life_stage == "hatchling":
+				if time_outside_dispenser_seconds >= 600.0: # 10 minutes real time
+					life_stage = "child"
+			elif life_stage == "child" or life_stage == "juvenile":
+				if time_outside_dispenser_seconds >= 2700.0: # 45 minutes total (35 mins as child)
+					life_stage = "adult"
+
+			if center_vel.length() > 20.0:
+				weight = clamp(weight - delta * 0.00005, 0.7, 1.3)
 		
 		# Calculate floor / platform landing
 		var platform_y = bounds.end.y - base_radius
@@ -697,8 +712,9 @@ func _evaluate_states(delta):
 			target_item = close_food
 			_change_state(State.CHASE_ITEM)
 		elif current_state != State.SICK:
-			_show_learning_emote("😭")
+			_show_learning_emote("[SICK]")
 			_change_state(State.SICK)
+
 		return
 
 	# 2. Begging override at panel/dispenser tab (at 30% hunger)
@@ -708,18 +724,22 @@ func _evaluate_states(delta):
 		_change_state(State.BEGGING)
 		return
 
-	# 3. Active Food searching override (< 50% hunger)
-	if stats.hunger < 50.0 and (current_state == State.IDLE or current_state == State.WANDER):
+	# 3. Active Food searching override (< 50% hunger or bored_eater trait)
+	if (stats.hunger < 50.0 or (bored_eater and stats.boredom < 50.0)) and (current_state == State.IDLE or current_state == State.WANDER):
 		if _scan_for_food_or_treat():
 			return
 			
-	# Self-Dispense override (steal food if neglected and starving)
+	# Self-Dispense override (steal food if neglected and starving, but ONLY if no food is left out!)
 	if stats.hunger < 20.0 and current_state != State.EATING and current_state != State.CHASE_ITEM:
 		var food = _find_closest_food_or_treat()
-		if not is_instance_valid(food):
+		if is_instance_valid(food):
+			target_item = food
+			_change_state(State.CHASE_ITEM)
+			return
+		else:
 			_change_state(State.SELF_DISPENSE)
 			return
-		
+
 	# Global state overrides
 	# Sleep override
 	if stats.energy < 15.0 and current_state != State.SLEEPING:
@@ -778,6 +798,9 @@ func _evaluate_states(delta):
 	if current_state == State.RELIEVING_SELF:
 		return
 
+	var is_infant_stage = (life_stage == "infant" or life_stage == "hatchling")
+	var is_adult_stage = (life_stage == "adult")
+
 	# State specific transitions
 	match current_state:
 		State.IDLE:
@@ -787,18 +810,24 @@ func _evaluate_states(delta):
 			if (stats.boredom < 60.0 or (randf() < 0.003 and stats.boredom < 90.0)) and is_instance_valid(toy):
 				target_item = toy
 				_change_state(State.CHASE_ITEM)
-			elif stats.affection < 50.0:
+			elif stats.affection < 50.0 and not is_infant_stage:
 				_change_state(State.CHASE_CURSOR)
 			elif stats.curiosity < 30.0 or (randf() < 0.02 and stats.curiosity < 70.0):
 				# Try to sit on a window border!
 				var spots = _query_window_borders()
-				if spots.size() > 0:
+				if spots.size() > 0 and not is_infant_stage:
 					target_wander_pos = spots[randi() % spots.size()]
 					_change_state(State.WINDOW_SIT)
-				else:
+				elif not is_infant_stage:
 					_find_curiosity_boundary_target()
 					_change_state(State.WANDER)
-			elif state_timer > rand_range(2.0, 5.0):
+			elif is_infant_stage and state_timer > rand_range(8.0, 16.0):
+				if randf() < 0.3:
+					_change_state(State.WANDER)
+			elif is_adult_stage and state_timer > rand_range(6.0, 12.0):
+				if randf() < 0.4:
+					_change_state(State.WANDER)
+			elif not is_infant_stage and not is_adult_stage and state_timer > rand_range(2.0, 4.0):
 				_change_state(State.WANDER)
 				
 		State.WANDER:
@@ -812,14 +841,17 @@ func _evaluate_states(delta):
 			elif is_instance_valid(other_pet) and global_position.distance_to(other_pet.global_position) < base_radius * 3.5:
 				partner_pet = other_pet
 				_change_state(State.PLAY_WITH_PET)
-			elif stats.curiosity < 45.0 and randf() < 0.0015:
+			elif stats.curiosity < 45.0 and randf() < 0.0015 and not is_infant_stage:
 				_change_state(State.DIGGING)
-			elif stats.affection < 50.0:
+			elif stats.affection < 50.0 and not is_infant_stage:
 				_change_state(State.CHASE_CURSOR)
-			elif state_timer > rand_range(5.0, 10.0):
+			elif is_infant_stage and state_timer > rand_range(2.0, 4.0):
+				_change_state(State.IDLE)
+			elif state_timer > rand_range(4.0, 8.0):
 				_change_state(State.IDLE)
 
 		State.BEGGING:
+
 			if _scan_for_food_or_treat():
 				return
 			if stats.hunger >= 50.0:
@@ -939,7 +971,8 @@ func _change_state(new_state: int):
 			window_sit_duration = rand_range(8.0, 20.0)
 		State.BEGGING:
 			center_vel = Vector2.ZERO
-			_show_learning_emote("🥺")
+			_show_learning_emote("[HUNGRY]")
+
 
 
 func _update_state_behavior(delta):
@@ -948,9 +981,18 @@ func _update_state_behavior(delta):
 			# Walk towards wander target
 			var dir = (target_wander_pos - global_position).normalized()
 			var speed = 80.0
-			if stats.wellness < 40.0:
+			var is_infant = (life_stage == "infant" or life_stage == "hatchling")
+			if is_infant:
+				speed = 22.0 # Crawling speed for infants!
+				var perp = Vector2(-dir.y, dir.x)
+				var crawl_wobble = perp * sin(state_timer * 8.0) * 10.0
+				center_vel = dir * speed + crawl_wobble
+			elif stats.wellness < 40.0:
 				speed = 30.0 # move slow when sick
-			center_vel = dir * speed
+				center_vel = dir * speed
+			else:
+				center_vel = dir * speed
+
 			
 			# Check if reached target
 			if global_position.distance_to(target_wander_pos) < 20.0 or state_timer > 6.0:
@@ -960,22 +1002,30 @@ func _update_state_behavior(delta):
 					return
 				var bounds = _get_viewport_bounds()
 				if global_position.x >= bounds.end.x - 70.0 and stats and stats.knows_food_button < 1.0:
-					# Pet curiosity tab / dispenser button interaction!
+					# Pet curiosity tab interaction across all panel tabs!
 					var main = get_parent()
 					if main:
+						var available_tabs = ["dispenser", "needs", "genetics", "inventory", "settings"]
+						var chosen_tab = available_tabs[randi() % available_tabs.size()]
 						if main.has_method("toggle_drawer_panel"):
-							main.call("toggle_drawer_panel", "dispenser")
-						var nozzle_pos = Vector2(OS.window_size.x / 2.0, 150.0)
-						if "dispenser_device" in main and is_instance_valid(main.dispenser_device):
-							nozzle_pos = main.dispenser_device.get_nozzle_global_position()
-						if main.has_method("spawn_food"):
-							main.call("spawn_food", nozzle_pos, false)
-							
-						stats.knows_food_button = clamp(stats.knows_food_button + 0.35, 0.0, 1.0)
-						stats.knows_dispenser = clamp(stats.knows_dispenser + 0.35, 0.0, 1.0)
-						_show_learning_emote("💡")
-						_scan_for_food_or_treat()
-						return
+							main.call("toggle_drawer_panel", chosen_tab)
+						
+						if chosen_tab == "dispenser" and (randf() < 0.5):
+							var nozzle_pos = Vector2(OS.window_size.x / 2.0, 150.0)
+							if "dispenser_device" in main and is_instance_valid(main.dispenser_device):
+								nozzle_pos = main.dispenser_device.get_nozzle_global_position()
+							if main.has_method("spawn_food"):
+								main.call("spawn_food", nozzle_pos, false)
+							stats.knows_food_button = clamp(stats.knows_food_button + 0.35, 0.0, 1.0)
+							stats.knows_dispenser = clamp(stats.knows_dispenser + 0.35, 0.0, 1.0)
+							_show_learning_emote("[IDEA]")
+							_scan_for_food_or_treat()
+							_change_state(State.IDLE)
+							return
+						else:
+							_show_learning_emote("[%s]" % chosen_tab.to_upper())
+							_change_state(State.IDLE)
+							return
 				if stats.curiosity < 30.0:
 					stats.curiosity = 100.0
 				_change_state(State.IDLE)
@@ -1013,7 +1063,8 @@ func _update_state_behavior(delta):
 				head_shake_timer = 0.2
 				head_shake_intensity = 3.0
 				if fmod(state_timer, 2.5) < delta:
-					_show_learning_emote("🍖" if randf() < 0.5 else "🥺")
+					_show_learning_emote("[FOOD]" if randf() < 0.5 else "[HUNGRY]")
+
 
 			if _scan_for_food_or_treat():
 				return
@@ -1024,13 +1075,21 @@ func _update_state_behavior(delta):
 				var dir = (target_pos - global_position).normalized()
 				var speed = 200.0
 
-				# Competition check: if another pet is targeting the exact same treat/food, HURRY!
-				var main_node = get_parent()
-				if main_node and ("active_pets" in main_node):
-					for other_p in main_node.active_pets:
-						if is_instance_valid(other_p) and other_p != self and other_p.target_item == target_item:
-							speed = 330.0 # Race / hurry speed boost!
-							break
+				var is_infant = (life_stage == "infant" or life_stage == "hatchling")
+				var is_sick = (current_state == State.SICK or (stats and stats.wellness < 40.0))
+
+				if is_infant:
+					speed = 25.0 # Infants NEVER run, crawling speed ONLY!
+				elif is_sick:
+					speed = 30.0 # Sick pets NEVER run, slow movement ONLY!
+				else:
+					# Competition check: if another adult pet is targeting the exact same treat/food, HURRY!
+					var main_node = get_parent()
+					if main_node and ("active_pets" in main_node):
+						for other_p in main_node.active_pets:
+							if is_instance_valid(other_p) and other_p != self and other_p.target_item == target_item:
+								speed = 330.0 # Race / hurry speed boost!
+								break
 
 				center_vel = lerp(center_vel, dir * speed, 0.1)
 				
@@ -1074,6 +1133,23 @@ func _update_state_behavior(delta):
 			# Eat animation vibration
 			var shake = Vector2(rand_range(-2, 2), rand_range(-2, 2))
 			global_position += shake
+			
+			# Continuous food guarding check while eating
+			var other_pet = _find_closest_other_pet()
+			if is_instance_valid(other_pet):
+				var dist_to_other = global_position.distance_to(other_pet.global_position)
+				if dist_to_other < base_radius * 4.5:
+					var push_dir = (other_pet.global_position - global_position).normalized()
+					look_dir = push_dir
+					head_shake_timer = 0.6
+					head_shake_intensity = 8.0
+					if fmod(state_timer, 1.0) < delta:
+						_show_learning_emote("[GROWL!]")
+					other_pet.target_item = null
+					other_pet._show_learning_emote("[SCARED]")
+					other_pet.center_vel += push_dir * 320.0
+					other_pet._change_state(State.WANDER)
+
 			
 		State.SICK:
 			# Walk slowly to hiding spot
@@ -1134,7 +1210,7 @@ func _update_state_behavior(delta):
 				
 				if not relieve_had_accident:
 					relieve_had_accident = true
-					_show_learning_emote("😭")
+					_show_learning_emote("[SICK]")
 					stats.agitation = clamp(stats.agitation + 30.0, 0.0, 100.0)
 					stats.affection = max(0.0, stats.affection - 15.0)
 					stats.wellness = max(0.0, stats.wellness - 10.0)
@@ -1172,20 +1248,27 @@ func _update_state_behavior(delta):
 				nozzle_pos = main.dispenser_device.get_nozzle_global_position()
 				
 			if self_dispense_phase == 0:
-				# Step 1: Walk to Dispenser Tab Ear on right edge
+				# Step 1: Walk to side tab ear on right edge
 				var dir = (tab_pos - global_position).normalized()
 				var dist = global_position.distance_to(tab_pos)
 				center_vel = dir * 130.0
 				
 				if dist < 35.0:
-					# Arrived at tab ear: Touch/tap tab ear to slide open drawer!
+					# Arrived at tab ear: Touch tab ear (50% dispenser, 50% other tabs)
+					var available_tabs = ["dispenser", "needs", "genetics", "inventory", "settings"]
+					var chosen_tab = available_tabs[randi() % available_tabs.size()]
 					if main and main.has_method("toggle_drawer_panel"):
-						main.call("toggle_drawer_panel", "dispenser")
-					_show_learning_emote("🚰")
-					self_dispense_phase = 1
-					state_timer = 0.0
+						main.call("toggle_drawer_panel", chosen_tab)
+					
+					_show_learning_emote("[%s]" % chosen_tab.to_upper())
+					if chosen_tab == "dispenser" and (randf() < 0.5):
+						self_dispense_phase = 1
+						state_timer = 0.0
+					else:
+						self_dispense_phase = 0
+						_change_state(State.IDLE)
 			else:
-				# Step 2: Walk to Food Button in the open Dispenser drawer
+				# Step 2: Walk to Food Button, take EXACTLY 1 food, and immediately finish!
 				var button_pos = nozzle_pos + Vector2(-40.0, 20.0)
 				if main and "dispenser_device" in main and is_instance_valid(main.dispenser_device):
 					var disp_rect = main.dispenser_device.get_panel_rect()
@@ -1195,15 +1278,16 @@ func _update_state_behavior(delta):
 				var dist = global_position.distance_to(button_pos)
 				center_vel = dir * 130.0
 				
-				if dist < 30.0 or state_timer > 4.0:
-					# Arrived at Food Button: Touch/tap button to dispense food!
+				if dist < 30.0 or state_timer > 3.0:
+					# Dispense EXACTLY 1 food item!
 					if main and main.has_method("spawn_food"):
 						main.call("spawn_food", nozzle_pos, false)
 						
 					if stats:
 						stats.knows_food_button = clamp(stats.knows_food_button + 0.35, 0.0, 1.0)
 						stats.knows_dispenser = clamp(stats.knows_dispenser + 0.35, 0.0, 1.0)
-					_show_learning_emote("💡")
+					_show_learning_emote("[IDEA]")
+
 					self_dispense_phase = 0
 					
 					if not _scan_for_food_or_treat():
@@ -1519,8 +1603,19 @@ func _draw():
 	if active_breed == null:
 		return
 		
-	var s = 1.0
+	var stretch_factor = 1.0
+	if OS.get_name() != "Android":
+		var win_h = OS.window_size.y
+		if win_h > 0.0:
+			stretch_factor = 768.0 / win_h
+
+
+	var stage_scale = 0.55 if (life_stage == "infant" or life_stage == "hatchling") else (0.85 if (life_stage == "child" or life_stage == "juvenile") else 1.0)
+	var weight_scale = lerp(0.85, 1.25, clamp((weight - 0.7) / 0.6, 0.0, 1.0))
+	var s = stage_scale * weight_scale * stretch_factor
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(transition_scale * s, transition_scale * s))
+
+
 		
 	# Generate colors based on state
 	var p_col = active_breed.primary_color
@@ -1710,26 +1805,90 @@ func _draw_antennae(shake: Vector2):
 	draw_circle(tip_r, 4.0, antenna_color.lightened(0.3))
 
 func _draw_wings():
+	if wing_type == "none":
+		return
+		
 	var time = OS.get_ticks_msec() * 0.006
 	var flap = sin(time * 4.0) * 12.0
 	var w_col = wing_color
 	
-	var left_wing = PoolVector2Array([
-		Vector2(-base_radius * 0.7, 0),
-		Vector2(-base_radius * 1.2, 8.0 + flap),
-		Vector2(-base_radius * 1.8, -12.0 + flap)
-	])
-	var right_wing = PoolVector2Array([
-		Vector2(base_radius * 0.7, 0),
-		Vector2(base_radius * 1.2, 8.0 + flap),
-		Vector2(base_radius * 1.8, -12.0 + flap)
-	])
-	if left_wing.size() >= 3:
-		draw_colored_polygon(left_wing, w_col)
-		draw_polyline(left_wing, outline_color, 2.0, true)
-	if right_wing.size() >= 3:
-		draw_colored_polygon(right_wing, w_col)
-		draw_polyline(right_wing, outline_color, 2.0, true)
+	match wing_type:
+		"angel":
+			var l_wing = PoolVector2Array([
+				Vector2(-base_radius * 0.6, -4.0),
+				Vector2(-base_radius * 1.3, -16.0 + flap),
+				Vector2(-base_radius * 1.9, -10.0 + flap),
+				Vector2(-base_radius * 1.5, 4.0 + flap * 0.5),
+				Vector2(-base_radius * 1.0, 8.0)
+			])
+			var r_wing = PoolVector2Array([
+				Vector2(base_radius * 0.6, -4.0),
+				Vector2(base_radius * 1.3, -16.0 + flap),
+				Vector2(base_radius * 1.9, -10.0 + flap),
+				Vector2(base_radius * 1.5, 4.0 + flap * 0.5),
+				Vector2(base_radius * 1.0, 8.0)
+			])
+			draw_colored_polygon(l_wing, w_col)
+			draw_polyline(l_wing, outline_color, 2.0, true)
+			draw_colored_polygon(r_wing, w_col)
+			draw_polyline(r_wing, outline_color, 2.0, true)
+
+		"bat":
+			var l_wing = PoolVector2Array([
+				Vector2(-base_radius * 0.6, -2.0),
+				Vector2(-base_radius * 1.7, -18.0 + flap),
+				Vector2(-base_radius * 1.5, -4.0 + flap),
+				Vector2(-base_radius * 1.2, 8.0 + flap * 0.5),
+				Vector2(-base_radius * 0.8, 4.0)
+			])
+			var r_wing = PoolVector2Array([
+				Vector2(base_radius * 0.6, -2.0),
+				Vector2(base_radius * 1.7, -18.0 + flap),
+				Vector2(base_radius * 1.5, -4.0 + flap),
+				Vector2(base_radius * 1.2, 8.0 + flap * 0.5),
+				Vector2(base_radius * 0.8, 4.0)
+			])
+			draw_colored_polygon(l_wing, w_col)
+			draw_polyline(l_wing, outline_color, 2.0, true)
+			draw_colored_polygon(r_wing, w_col)
+			draw_polyline(r_wing, outline_color, 2.0, true)
+
+		"butterfly":
+			var l_wing = PoolVector2Array([
+				Vector2(-base_radius * 0.5, -6.0),
+				Vector2(-base_radius * 1.6, -20.0 + flap),
+				Vector2(-base_radius * 1.8, -4.0 + flap),
+				Vector2(-base_radius * 1.4, 12.0 + flap * 0.7),
+				Vector2(-base_radius * 0.7, 4.0)
+			])
+			var r_wing = PoolVector2Array([
+				Vector2(base_radius * 0.5, -6.0),
+				Vector2(base_radius * 1.6, -20.0 + flap),
+				Vector2(base_radius * 1.8, -4.0 + flap),
+				Vector2(base_radius * 1.4, 12.0 + flap * 0.7),
+				Vector2(base_radius * 0.7, 4.0)
+			])
+			draw_colored_polygon(l_wing, w_col)
+			draw_polyline(l_wing, outline_color, 2.0, true)
+			draw_colored_polygon(r_wing, w_col)
+			draw_polyline(r_wing, outline_color, 2.0, true)
+
+		"fin", _:
+			var l_wing = PoolVector2Array([
+				Vector2(-base_radius * 0.7, 0),
+				Vector2(-base_radius * 1.3, 10.0 + flap * 0.5),
+				Vector2(-base_radius * 1.7, -10.0 + flap * 0.5)
+			])
+			var r_wing = PoolVector2Array([
+				Vector2(base_radius * 0.7, 0),
+				Vector2(base_radius * 1.3, 10.0 + flap * 0.5),
+				Vector2(base_radius * 1.7, -10.0 + flap * 0.5)
+			])
+			draw_colored_polygon(l_wing, w_col)
+			draw_polyline(l_wing, outline_color, 2.0, true)
+			draw_colored_polygon(r_wing, w_col)
+			draw_polyline(r_wing, outline_color, 2.0, true)
+
 
 func _draw_tail():
 	if segment_positions.size() < 1:
@@ -2087,26 +2246,29 @@ func _get_viewport_bounds() -> Rect2:
 
 func _draw_mouth():
 	var m_color = Color("000000")
+	var base_angle = look_dir.angle()
+	var perp = look_dir.tangent()
 	
 	if current_state == State.SLEEPING:
-		# Sleeping: Draw a small line "z" or tiny circle
-		draw_arc(mouth_pos, 4.0, 0, PI, 8, m_color, 2.0)
+		# Sleeping: Draw a small sleeping arc
+		draw_arc(mouth_pos, 4.0, base_angle + PI * 0.1, base_angle + PI * 0.9, 8, m_color, 2.0)
 	elif current_state == State.EATING:
 		# Eating: Large open circle animation
 		var eat_rad = lerp(4.0, 12.0, sin(OS.get_ticks_msec() * 0.03) * 0.5 + 0.5)
 		draw_circle(mouth_pos, eat_rad, m_color)
 	elif stats.agitation > 50.0:
-		# Angry squiggly line
-		draw_line(mouth_pos - Vector2(10, 0), mouth_pos + Vector2(10, 0), m_color, 3.0)
+		# Angry line aligned perpendicular to looking direction
+		draw_line(mouth_pos - perp * 10.0, mouth_pos + perp * 10.0, m_color, 3.0)
 	elif stats.hunger < 30.0:
-		# Sad droopy mouth
-		draw_arc(mouth_pos, 8.0, PI, 2*PI, 12, m_color, 3.0)
+		# Sad droopy mouth arc facing away from looking direction
+		draw_arc(mouth_pos, 8.0, base_angle - PI * 0.8, base_angle - PI * 0.2, 12, m_color, 3.0)
 	elif current_state == State.CHASE_CURSOR:
-		# Happy smile
-		draw_arc(mouth_pos, 8.0, 0, PI, 12, m_color, 3.0)
+		# Happy smile arc facing looking direction
+		draw_arc(mouth_pos, 8.0, base_angle + PI * 0.2, base_angle + PI * 0.8, 12, m_color, 3.0)
 	else:
-		# Normal simple mouth line
-		draw_line(mouth_pos - Vector2(6, 0), mouth_pos + Vector2(6, 0), m_color, 2.0)
+		# Normal mouth line aligned perpendicular to looking direction
+		draw_line(mouth_pos - perp * 6.0, mouth_pos + perp * 6.0, m_color, 2.0)
+
 
 func _check_item_collisions():
 	var main = get_parent()
@@ -2228,11 +2390,11 @@ func _on_digging_complete():
 			# 3. Check pet learning for auto-collecting into inventory
 			if stats and stats.knows_inventory >= 1.0:
 				dig_item.collect_item()
-				_show_learning_emote("🎒")
+				_show_learning_emote("[BAG]")
 			elif stats and randf() < stats.knows_inventory:
 				stats.knows_inventory = clamp(stats.knows_inventory + 0.25, 0.0, 1.0)
 				dig_item.collect_item()
-				_show_learning_emote("🎒")
+				_show_learning_emote("[BAG]")
 
 func _scan_for_food_or_treat() -> bool:
 	var item = _find_closest_food_or_treat()
@@ -2249,20 +2411,30 @@ func _find_closest_food_or_treat() -> Node2D:
 	if stats and stats.hunger >= 95.0:
 		return null # >= 95% full -> ignores treats and food completely!
 
+	var is_infant = (life_stage == "infant" or life_stage == "hatchling")
 	var closest = null
 	var min_d = 99999.0
-	var allow_regular_food = (stats == null or stats.hunger < 50.0)
+	var allow_regular_food = (stats == null or stats.hunger < 50.0 or (bored_eater and stats.boredom < 50.0))
 
 	for item in main.active_items:
 		if is_instance_valid(item):
+			var is_bottle = (item.get("is_bottle") == true)
 			var is_treat = (item.get("is_treat") == true)
 			var is_food = (item.get("is_food") == true or item.filename.find("Food") != -1)
 
 			var matches = false
-			if is_treat:
-				matches = true # Below 95% hunger -> pursues treats!
-			elif is_food and allow_regular_food:
-				matches = true # Below 50% hunger -> pursues regular food!
+			if is_infant:
+				# Infants ONLY want baby feeding bottles!
+				if is_bottle and stats.hunger < 99.0:
+					matches = true
+			else:
+				# Non-infants (adults, children) NEVER want baby bottles!
+				if is_bottle:
+					matches = false
+				elif is_treat:
+					matches = true # Below 95% hunger -> pursues treats!
+				elif is_food and allow_regular_food:
+					matches = true # Below 50% hunger or bored eater -> pursues regular food!
 
 			if matches:
 				var d = global_position.distance_to(item.global_position)
@@ -2271,13 +2443,14 @@ func _find_closest_food_or_treat() -> Node2D:
 					closest = item
 	return closest
 
+
 func _show_learning_emote(icon_text: String):
 	var main = get_parent()
 	if not main:
 		return
 	var lbl = Label.new()
 	lbl.text = icon_text
-	lbl.rect_global_position = global_position + Vector2(-10, -35)
+	lbl.rect_global_position = global_position + Vector2(-15, -35)
 	main.add_child(lbl)
 	
 	var t = main.create_tween()
@@ -2313,7 +2486,7 @@ func on_glass_tapped(tap_pos: Vector2):
 	head_shake_intensity = 5.0
 	if stats:
 		stats.affection = clamp(stats.affection + 4.0, 0.0, 100.0)
-	_show_learning_emote("👀")
+	_show_learning_emote("[LOOK]")
 
 func walk_to_tap_location(tap_pos: Vector2, try_dig: bool = true):
 	if current_state == State.SLEEPING or current_state == State.SICK or current_state == State.RETURNING_TO_DISPENSER or current_state == State.EMERGING_FROM_DISPENSER:
@@ -2324,7 +2497,84 @@ func walk_to_tap_location(tap_pos: Vector2, try_dig: bool = true):
 	if current_state != State.WANDER:
 		_change_state(State.WANDER)
 
+func eat_food(food_item) -> bool:
+	if not is_instance_valid(food_item):
+		return false
+		
+	var is_infant = (life_stage == "infant" or life_stage == "hatchling")
+	var is_bottle = (food_item.get("is_bottle") == true)
+	var is_treat = (food_item.get("is_treat") == true)
+	
+	if is_bottle:
+		if is_infant:
+			return feed_bottle(food_item)
+		else:
+			head_shake_timer = 0.4
+			head_shake_intensity = 5.0
+			_show_learning_emote("[FOR INFANTS]")
+			return false
+		
+	if is_infant:
+		# Infant refuses regular food or treats!
+		head_shake_timer = 0.4
+		head_shake_intensity = 5.0
+		_show_learning_emote("[NO NO]")
+		return false
+		
+	if is_treat:
+		if stats and stats.hunger >= 95.0:
+			_show_learning_emote("[FULL]")
+			return false
+		target_item = food_item
+		weight = clamp(weight + 0.04, 0.7, 1.3)
+		_check_food_competition_and_eat()
+		return true
+		
+	# Regular food: Check hunger or bored_eater
+	var is_hungry_or_bored = (stats == null or stats.hunger < 50.0 or (bored_eater and stats.boredom < 50.0))
+	if not is_hungry_or_bored:
+		head_shake_timer = 0.3
+		head_shake_intensity = 4.0
+		_show_learning_emote("[NOT HUNGRY]")
+		return false
+		
+	target_item = food_item
+	weight = clamp(weight + 0.04, 0.7, 1.3)
+	_check_food_competition_and_eat()
+	return true
+
+
+func feed_bottle(bottle_item) -> bool:
+	var is_infant_stage = (life_stage == "infant" or life_stage == "hatchling")
+	if is_infant_stage or current_state == State.SICK or stats.hunger < 99.0:
+		stats.hunger = clamp(stats.hunger + 40.0, 0.0, 100.0)
+		stats.wellness = clamp(stats.wellness + 35.0, 0.0, 100.0)
+		stats.affection = clamp(stats.affection + 15.0, 0.0, 100.0)
+		weight = clamp(weight + 0.05, 0.7, 1.3)
+		
+		head_shake_timer = 0.5
+		head_shake_intensity = 3.0
+		
+		# Animate bottle item leaning near mouth
+		if is_instance_valid(bottle_item):
+			bottle_item.global_position = mouth_pos + look_dir * 12.0
+			bottle_item.rotation = -PI * 0.25
+			
+		if current_state == State.SICK:
+			sick_auto_return_timer = 0.0
+			if stats.wellness >= 70.0:
+				_change_state(State.IDLE)
+		else:
+			_change_state(State.EATING)
+			
+		_show_learning_emote("[BOTTLE]")
+		return true
+	return false
+
+
+
 func _check_food_competition_and_eat():
+
 	var other_pet = _find_closest_other_pet()
 	if is_instance_valid(other_pet):
 		var dist_to_other = global_position.distance_to(other_pet.global_position)
@@ -2338,15 +2588,16 @@ func _check_food_competition_and_eat():
 			if stats:
 				stats.agitation = clamp(stats.agitation + 20.0, 0.0, 100.0)
 			
-			_show_learning_emote("😡")
+			_show_learning_emote("[GROWL!]")
 			
 			# If rival pet is also targeting or chasing this food, rival pet backs off!
 			if is_instance_valid(target_item) and other_pet.target_item == target_item:
 				other_pet.target_item = null
-				other_pet._show_learning_emote("😿")
+				other_pet._show_learning_emote("[SCARED]")
 				other_pet.center_vel = -away_dir * 120.0
 				other_pet._change_state(State.WANDER)
 	_change_state(State.EATING)
+
 
 func _spawn_poop():
 	var PoopScene = preload("res://Poop.tscn")

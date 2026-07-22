@@ -29,14 +29,15 @@ func get_status_text(id_a: String, id_b: String) -> String:
 	var r = rel["romance"]
 	
 	if r >= 75.0:
-		return "Soulmates 💕"
+		return "Soulmates"
 	elif r >= 40.0:
-		return "Sweethearts ❤️"
+		return "Sweethearts"
 	elif f >= 80.0:
-		return "Best Friends 🌟"
+		return "Best Friends"
 	elif f >= 60.0:
-		return "Friends 😊"
+		return "Friends"
 	elif f <= 20.0:
-		return "Rivals 😠"
+		return "Rivals"
 	else:
-		return "Acquaintances 👋"
+		return "Acquaintances"
+

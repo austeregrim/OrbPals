@@ -3,7 +3,7 @@ extends Control
 signal tab_clicked(tab_id)
 
 export(String) var tab_id = ""
-export(String) var icon_text = "📁"
+export(String) var icon_text = ""
 export(Color) var accent_color = Color(0.8, 0.8, 1.0, 1.0)
 
 onready var btn = $Button
@@ -39,7 +39,18 @@ func _update_icon_and_text():
 	else:
 		if icon_node:
 			icon_node.visible = false
-		btn.text = icon_text
+		if icon_text != "" and not icon_text.match("*[\u0080-\uFFFF]*"):
+			btn.text = icon_text
+		else:
+			match tab_id:
+				"dispenser": btn.text = "DISP"
+				"needs": btn.text = "NEED"
+				"genetics": btn.text = "GENE"
+				"inventory": btn.text = "INVT"
+				"settings": btn.text = "SETT"
+				"debug": btn.text = "DBUG"
+				_: btn.text = tab_id.left(4).to_upper()
+
 
 func _on_theme_color_changed(color: Color):
 	var safe_color = color
@@ -78,12 +89,17 @@ func _on_theme_color_changed(color: Color):
 	if btn:
 		var ear_style = StyleBoxFlat.new()
 		ear_style.bg_color = safe_color
-		ear_style.border_width_left = 2
 		ear_style.border_width_top = 2
 		ear_style.border_width_bottom = 2
 		ear_style.border_color = safe_color.lightened(0.2)
-		ear_style.corner_radius_top_left = 8
-		ear_style.corner_radius_bottom_left = 8
+		if tab_id == "debug":
+			ear_style.border_width_right = 2
+			ear_style.corner_radius_top_right = 8
+			ear_style.corner_radius_bottom_right = 8
+		else:
+			ear_style.border_width_left = 2
+			ear_style.corner_radius_top_left = 8
+			ear_style.corner_radius_bottom_left = 8
 		btn.add_stylebox_override("normal", ear_style)
 		btn.add_stylebox_override("hover", ear_style)
 		btn.add_stylebox_override("pressed", ear_style)

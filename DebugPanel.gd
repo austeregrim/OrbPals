@@ -40,19 +40,34 @@ onready var speed_label = $Panel/Margin/VBox/SpeedSection/Label
 
 onready var tab_ear = $PanelTabEar
 
+var is_undocked = false
 var is_dragging = false
 var drag_offset = Vector2.ZERO
+onready var vbox = $Panel/Margin/VBox
+var undock_btn = null
 
 func _ready():
-	$Panel/Margin/VBox/TitleBar.connect("gui_input", self, "_on_titlebar_gui_input")
+	_ensure_scroll_container()
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
+
+	if vbox and vbox.has_node("TitleBar"):
+		var tb = vbox.get_node("TitleBar")
+		tb.connect("gui_input", self, "_on_titlebar_gui_input")
+		if not undock_btn:
+			undock_btn = Button.new()
+			undock_btn.name = "UndockBtn"
+			undock_btn.text = "[Pin]"
+			undock_btn.flat = true
+			undock_btn.hint_tooltip = "Undock / Dock Panel"
+			undock_btn.connect("pressed", self, "toggle_undock")
+			tb.add_child(undock_btn)
 
 	prev_pet_btn.connect("pressed", self, "_on_prev_pet_pressed")
 	next_pet_btn.connect("pressed", self, "_on_next_pet_pressed")
 
 	if tab_ear:
 		tab_ear.tab_id = "debug"
-		tab_ear.icon_text = "🐛"
+		tab_ear.icon_text = "DBUG"
 		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
 
 	hunger_slider.connect("value_changed", self, "_on_slider_value_changed", ["hunger"])
@@ -70,8 +85,37 @@ func _ready():
 	speed_slider.connect("value_changed", self, "_on_speed_changed")
 	decay_check.connect("toggled", self, "_on_decay_toggled")
 
+func toggle_undock():
+	is_undocked = not is_undocked
+	_update_undock_button_ui()
+	var main = get_parent()
+	if not is_undocked and main and main.has_method("_reposition_all_side_panels"):
+		main.call("_reposition_all_side_panels", true)
+
+func _update_undock_button_ui():
+	if undock_btn:
+		undock_btn.text = "[Unpin]" if is_undocked else "[Pin]"
+
+
 func _on_tab_ear_clicked(tab_id: String):
 	emit_signal("tab_clicked", tab_id)
+
+func _on_titlebar_gui_input(event):
+	if not is_undocked:
+		return
+	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
+		if event.pressed:
+			is_dragging = true
+			drag_offset = event.global_position - rect_global_position
+		else:
+			is_dragging = false
+	elif event is InputEventMouseMotion and is_dragging and is_undocked:
+		var new_pos = event.global_position - drag_offset
+		var vp_size = get_viewport_rect().size
+		new_pos.x = clamp(new_pos.x, 0, max(0, vp_size.x - rect_size.x))
+		new_pos.y = clamp(new_pos.y, 0, max(0, vp_size.y - rect_size.y))
+		rect_global_position = new_pos
+
 
 func _on_prev_pet_pressed():
 	selected_pet_idx -= 1
@@ -103,21 +147,8 @@ func _update_selected_pet():
 		selected_pet_idx = 0
 	update_ui_from_stats()
 
-func _on_titlebar_gui_input(event):
-	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
-		if event.pressed:
-			is_dragging = true
-			drag_offset = event.global_position - $Panel.rect_global_position
-		else:
-			is_dragging = false
-	elif event is InputEventMouseMotion and is_dragging:
-		var new_pos = event.global_position - drag_offset
-		var vp_size = get_viewport_rect().size
-		new_pos.x = clamp(new_pos.x, 10, max(10, vp_size.x - $Panel.rect_size.x - 10))
-		new_pos.y = clamp(new_pos.y, 10, max(10, vp_size.y - $Panel.rect_size.y - 10))
-		$Panel.rect_global_position = new_pos
-
 func open():
+
 	visible = true
 	var vp_size = get_viewport_rect().size
 	$Panel.rect_global_position = Vector2(20, (vp_size.y - $Panel.rect_size.y) / 2.0)
@@ -166,19 +197,19 @@ func update_ui_from_stats():
 	pet_title_label.text = "Pet: %s" % pet_ref.pet_name
 	state_label.text = "State: %d" % pet_ref.current_state
 	hunger_slider.value = stats.hunger
-	hunger_label.text = "Hunger (%.1f%%)" % stats.hunger
+	hunger_label.text = "Hunger: %.0f%%" % stats.hunger
 	boredom_slider.value = stats.boredom
-	boredom_label.text = "Boredom (%.1f%%)" % stats.boredom
+	boredom_label.text = "Boredom: %.0f%%" % stats.boredom
 	energy_slider.value = stats.energy
-	energy_label.text = "Energy (%.1f%%)" % stats.energy
+	energy_label.text = "Energy: %.0f%%" % stats.energy
 	affection_slider.value = stats.affection
-	affection_label.text = "Affection (%.1f%%)" % stats.affection
+	affection_label.text = "Affection: %.0f%%" % stats.affection
 	curiosity_slider.value = stats.curiosity
-	curiosity_label.text = "Curiosity (%.1f%%)" % stats.curiosity
+	curiosity_label.text = "Curiosity: %.0f%%" % stats.curiosity
 	agitation_slider.value = stats.agitation
-	agitation_label.text = "Agitation (%.1f%%)" % stats.agitation
+	agitation_label.text = "Agitation: %.0f%%" % stats.agitation
 	wellness_slider.value = stats.wellness
-	wellness_label.text = "Wellness (%.1f%%)" % stats.wellness
+	wellness_label.text = "Wellness: %.0f%%" % stats.wellness
 
 func _on_slider_value_changed(val, drive_name):
 	emit_signal("drive_changed", drive_name, val)
@@ -189,7 +220,7 @@ func _on_decay_toggled(button_pressed):
 	emit_signal("decay_toggled", button_pressed)
 
 func _on_speed_changed(val):
-	speed_label.text = "Decay Speed (%.2fx)" % val
+	speed_label.text = "Speed: %.2fx" % val
 	emit_signal("decay_multiplier_changed", val)
 
 func get_panel_rect() -> Rect2:
@@ -199,3 +230,23 @@ func get_tab_rect() -> Rect2:
 	if is_instance_valid(tab_ear):
 		return tab_ear.get_tab_rect()
 	return Rect2()
+
+func _ensure_scroll_container():
+	var margin = get_node_or_null("Panel/Margin")
+	if not margin:
+		return
+	var vbox = margin.get_node_or_null("VBox")
+	if vbox and not vbox.get_parent() is ScrollContainer:
+		margin.remove_child(vbox)
+		var scroll = ScrollContainer.new()
+		scroll.name = "ScrollContainer"
+		scroll.anchor_right = 1.0
+		scroll.anchor_bottom = 1.0
+		scroll.size_flags_horizontal = SIZE_EXPAND_FILL
+		scroll.size_flags_vertical = SIZE_EXPAND_FILL
+		scroll.scroll_horizontal_enabled = false
+		margin.add_child(scroll)
+		scroll.add_child(vbox)
+		vbox.size_flags_horizontal = SIZE_EXPAND_FILL
+		vbox.size_flags_vertical = SIZE_EXPAND_FILL
+

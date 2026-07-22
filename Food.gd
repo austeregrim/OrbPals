@@ -43,6 +43,7 @@ var is_toy = false
 
 # Spoiling mechanics
 export(bool) var is_treat = false
+export(bool) var is_bottle = false
 var is_spoiled = false
 var age = 0.0
 export(float) var spoil_time = 300.0 # regular food spoils in 5 minutes
@@ -50,8 +51,8 @@ export(float) var spoil_time = 300.0 # regular food spoils in 5 minutes
 var ContextMenuScene = preload("res://ContextMenu.tscn")
 
 func _physics_process(delta):
-	# Process spoiling (treats never spoil)
-	if not is_treat and not is_spoiled:
+	# Process spoiling (treats and bottles never spoil)
+	if not is_treat and not is_bottle and not is_spoiled:
 		age += delta
 		if age >= spoil_time:
 			is_spoiled = true
@@ -146,6 +147,27 @@ func _input(event):
 				main.call("remove_item", self)
 			get_tree().set_input_as_handled()
 			return
+
+		# Direct Drag Auto-eating check when dropped on a pet
+		if main and ("active_pets" in main):
+			for pet in main.active_pets:
+				if is_instance_valid(pet) and global_position.distance_to(pet.global_position) < pet.base_radius * 2.2:
+					if is_bottle:
+						if pet.has_method("feed_bottle") and pet.feed_bottle(self):
+							if main.has_method("remove_item"):
+								main.call("remove_item", self)
+							get_tree().set_input_as_handled()
+							return
+					else:
+						if pet.has_method("eat_food"):
+							var consumed = pet.eat_food(self)
+							if consumed:
+								if main.has_method("remove_item"):
+									main.call("remove_item", self)
+								get_tree().set_input_as_handled()
+								return
+
+
 		if drag_positions.size() > 1:
 			var start_pos = drag_positions[0]
 			var end_pos = drag_positions[drag_positions.size() - 1]
@@ -163,8 +185,15 @@ func get_click_polygon() -> PoolVector2Array:
 	return poly
 
 func _draw():
+	if is_bottle:
+		# Draw Feeding Bottle 🍼
+		draw_rect(Rect2(Vector2(-7, -10), Vector2(14, 18)), Color("e0f7fa"))
+		draw_rect(Rect2(Vector2(-7, -10), Vector2(14, 18)), Color("006064"), false, 1.5)
+		draw_rect(Rect2(Vector2(-6, -4), Vector2(12, 11)), Color("ffffff"))
+		draw_circle(Vector2(0, -12), 4.5, Color("ffb74d"))
+		draw_line(Vector2(-4, -10), Vector2(4, -10), Color("ef6c00"), 2.0)
+	elif is_treat:
 
-	if is_treat:
 		# Draw Treat (Cookie)
 		# Cookie base (tan brown)
 		draw_circle(Vector2.ZERO, radius, Color("d7ccc8"))

@@ -26,22 +26,32 @@ export(float) var agitation_decay_rate = 5.0  # cooling down rate
 export(float) var wellness_decay_rate = 0.005  # very slow passive
 export(float) var elemental_energy_fill_rate = 0.35 # ~4.5 minutes to fill 0 -> 100
 
+# Genetic Need Decay Rate Modifiers (±5% off normalized standard, e.g. 0.95 to 1.05)
+export(Dictionary) var decay_modifiers = {
+	"hunger": 1.0,
+	"boredom": 1.0,
+	"energy": 1.0,
+	"affection": 1.0,
+	"curiosity": 1.0,
+	"wellness": 1.0
+}
+
 # Global speed multiplier — scale all decays. 1.0 = normal, 0.5 = half speed
 export(float) var decay_multiplier = 1.0
 
 func decay(delta: float, is_moving: bool = false):
 	var d = delta * decay_multiplier * Settings.decay_rate_scale
-	var current_energy_rate = energy_decay_rate * (2.5 if is_moving else 1.0)
-	hunger = clamp(hunger - hunger_decay_rate * d, 0.0, 100.0)
-	boredom = clamp(boredom - boredom_decay_rate * d, 0.0, 100.0)
+	var current_energy_rate = energy_decay_rate * (2.5 if is_moving else 1.0) * float(decay_modifiers.get("energy", 1.0))
+	hunger = clamp(hunger - hunger_decay_rate * float(decay_modifiers.get("hunger", 1.0)) * d, 0.0, 100.0)
+	boredom = clamp(boredom - boredom_decay_rate * float(decay_modifiers.get("boredom", 1.0)) * d, 0.0, 100.0)
 	energy = clamp(energy - current_energy_rate * d, 0.0, 100.0)
-	affection = clamp(affection - affection_decay_rate * d, 0.0, 100.0)
-	curiosity = clamp(curiosity - curiosity_decay_rate * d, 0.0, 100.0)
+	affection = clamp(affection - affection_decay_rate * float(decay_modifiers.get("affection", 1.0)) * d, 0.0, 100.0)
+	curiosity = clamp(curiosity - curiosity_decay_rate * float(decay_modifiers.get("curiosity", 1.0)) * d, 0.0, 100.0)
 	agitation = clamp(agitation - agitation_decay_rate * d, 0.0, 100.0)
 	toilet = clamp(toilet + 0.01 * d, 0.0, 100.0)
 	elemental_energy = clamp(elemental_energy + elemental_energy_fill_rate * d, 0.0, 100.0)
 	
-	# Wellness only degrades very slowly on its own.
-	wellness = clamp(wellness - wellness_decay_rate * d, 0.0, 100.0)
+	# Wellness degrades very slowly on its own.
+	wellness = clamp(wellness - wellness_decay_rate * float(decay_modifiers.get("wellness", 1.0)) * d, 0.0, 100.0)
 
 

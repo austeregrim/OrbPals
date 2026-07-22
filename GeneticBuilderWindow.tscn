@@ -6,7 +6,7 @@
 [node name="GeneticBuilderWindow" type="Control"]
 margin_right = 460.0
 margin_bottom = 540.0
-rect_min_size = Vector2( 460, 540 )
+rect_min_size = Vector2( 460, 180 )
 script = ExtResource( 1 )
 
 [node name="PanelTabEar" parent="." instance=ExtResource( 2 )]
@@ -15,7 +15,7 @@ margin_top = 0.0
 margin_right = 0.0
 margin_bottom = 44.0
 tab_id = "genetics"
-icon_text = "🥚"
+icon_text = "GENE"
 
 [node name="Panel" type="Panel" parent="."]
 anchor_right = 1.0
@@ -45,7 +45,7 @@ margin_top = 5.0
 margin_right = 430.0
 margin_bottom = 19.0
 size_flags_horizontal = 3
-text = "🧬 DNA Double Helix Assembly Builder"
+text = "DNA Double Helix Assembly Builder"
 
 [node name="FragGridLabel" type="Label" parent="Panel/Margin/VBox"]
 margin_top = 32.0
@@ -72,14 +72,14 @@ custom_constants/separation = 10
 margin_right = 210.0
 margin_bottom = 30.0
 size_flags_horizontal = 3
-text = "❌ Undo Last Base"
+text = "Undo Last Base"
 
 [node name="ClearBtn" type="Button" parent="Panel/Margin/VBox/ActionRow"]
 margin_left = 220.0
 margin_right = 430.0
 margin_bottom = 30.0
 size_flags_horizontal = 3
-text = "🧹 Clear Strand"
+text = "Clear Strand"
 
 [node name="StrandList" type="ItemList" parent="Panel/Margin/VBox"]
 margin_top = 176.0
@@ -135,4 +135,5 @@ margin_top = 416.0
 margin_right = 430.0
 margin_bottom = 466.0
 rect_min_size = Vector2( 0, 50 )
-text = "🥚 Synthesize DNA Strand & Hatch Egg!"
+text = "Synthesize DNA Strand & Hatch Egg!"
+
