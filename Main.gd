@@ -800,14 +800,16 @@ func spawn_bottle(pos: Vector2):
 			p.call("on_food_spawned", bottle)
 
 
-func spawn_toy(pos: Vector2):
+func spawn_toy(pos: Vector2, toy_type_str: String = "ball"):
 	var toy = ToyScene.instance()
+	toy.toy_type = toy_type_str
 	toy.global_position = pos
 	add_child(toy)
 	active_items.append(toy)
 	for p in active_pets:
 		if is_instance_valid(p) and p.has_method("on_toy_spawned"):
 			p.call("on_toy_spawned", toy)
+
 
 func cure_pets():
 	for p in active_pets:

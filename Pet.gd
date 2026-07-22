@@ -17,10 +17,18 @@ enum State {
 	WINDOW_SIT,
 	PLAY_WITH_PET,
 	DIGGING,
-	BEGGING
+	BEGGING,
+	DANCING
 }
 
 signal returned_to_box(breed_name)
+
+# Voice Customization (0..3 versions, 0..2 pitches)
+var voice_version: int = 0
+var voice_pitch: int = 1
+var footstep_timer: float = 0.0
+var guarded_toy: Node = null
+
 
 # Pet Identity & Custom Data
 var pet_id: String = "grubby"
@@ -866,10 +874,19 @@ func _evaluate_states(delta):
 				stats.affection = clamp(stats.affection + delta * 15.0, 0.0, 100.0)
 
 		State.DIGGING:
+			if state_timer < 0.05 and AudioManager:
+				AudioManager.play_digging()
 			if state_timer > 2.5:
 				# Complete digging & drop material into inventory
 				_on_digging_complete()
 				_change_state(State.IDLE)
+
+		State.DANCING:
+			stats.boredom = clamp(stats.boredom + delta * 25.0, 0.0, 100.0)
+			stats.affection = clamp(stats.affection + delta * 15.0, 0.0, 100.0)
+			if randf() < 0.006 and AudioManager:
+				AudioManager.play_pet_emotion(self, "sing" if randf() < 0.5 else "giggle")
+
 				
 		State.WINDOW_SIT:
 			# Let it sit for a random duration between 8 and 20 seconds, or until dragged/disturbed
@@ -927,16 +944,26 @@ func _change_state(new_state: int):
 	match new_state:
 		State.IDLE:
 			center_vel = Vector2.ZERO
+			if AudioManager and randf() < 0.2:
+				AudioManager.play_pet_emotion(self, "sigh")
 		State.WANDER:
 			_pick_random_wander_target()
 		State.CHASE_CURSOR:
-			pass
+			if AudioManager and randf() < 0.3:
+				AudioManager.play_pet_emotion(self, "giggle")
+		State.CHASE_ITEM:
+			if AudioManager:
+				AudioManager.play_pet_emotion(self, "question_huh")
 		State.SLEEPING:
 			center_vel = Vector2.ZERO
+			if AudioManager:
+				AudioManager.play_pet_emotion(self, "yawn")
 		State.EATING:
 			center_vel = Vector2.ZERO
 		State.SICK:
 			center_vel = Vector2.ZERO
+			if AudioManager:
+				AudioManager.play_pet_emotion(self, "cry")
 			var bounds = _get_viewport_bounds()
 			var hide_x = bounds.position.x + 60.0
 			if randf() < 0.5:
@@ -950,6 +977,13 @@ func _change_state(new_state: int):
 				hide_y = disp_rect.end.y + 40.0
 				
 			target_wander_pos = Vector2(hide_x, hide_y)
+		State.AGITATED:
+			if AudioManager:
+				AudioManager.play_pet_emotion(self, "bark_roar")
+		State.DANCING:
+			if AudioManager:
+				AudioManager.play_pet_emotion(self, "sing")
+
 		State.RETURNING_TO_DISPENSER:
 			pass
 		State.EMERGING_FROM_DISPENSER:
@@ -2140,6 +2174,12 @@ func setup_custom_data(pet_dict: Dictionary):
 	life_stage = pet_dict.get("life_stage", "adult")
 	time_outside_dispenser_seconds = pet_dict.get("time_outside_dispenser_seconds", 0.0)
 	
+	voice_version = pet_dict.get("voice_version", randi() % 4)
+	voice_pitch = pet_dict.get("voice_pitch", randi() % 3)
+	if stats:
+		stats.voice_version = voice_version
+		stats.voice_pitch = voice_pitch
+
 	has_fur = pet_dict.get("has_fur", false)
 	fur_length = pet_dict.get("fur_length", 7.0)
 	if pet_dict.has("fur_color"):

@@ -16,6 +16,10 @@ var pet_mortality_enabled: bool = true
 var decay_rate_scale: float = 1.0
 var debug_unlocked: bool = false
 
+var master_volume: float = 0.8
+var sfx_volume: float = 0.8
+var music_volume: float = 0.8
+
 const SAVE_PATH = "user://settings.cfg"
 
 func _ready():
@@ -33,6 +37,9 @@ func load_settings():
 		pet_aging_enabled = config.get_value("settings", "pet_aging_enabled", true)
 		pet_mortality_enabled = config.get_value("settings", "pet_mortality_enabled", true)
 		decay_rate_scale = config.get_value("settings", "decay_rate_scale", 1.0)
+		master_volume = config.get_value("settings", "master_volume", 0.8)
+		sfx_volume = config.get_value("settings", "sfx_volume", 0.8)
+		music_volume = config.get_value("settings", "music_volume", 0.8)
 		theme_color = Color(config.get_value("settings", "theme_color", "ffffff"))
 	else:
 		save_settings()
@@ -46,8 +53,12 @@ func save_settings():
 	config.set_value("settings", "pet_aging_enabled", pet_aging_enabled)
 	config.set_value("settings", "pet_mortality_enabled", pet_mortality_enabled)
 	config.set_value("settings", "decay_rate_scale", decay_rate_scale)
+	config.set_value("settings", "master_volume", master_volume)
+	config.set_value("settings", "sfx_volume", sfx_volume)
+	config.set_value("settings", "music_volume", music_volume)
 	config.set_value("settings", "theme_color", theme_color.to_html(false))
 	config.set_value("settings", "debug_unlocked", false)
+
 	var err = config.save(SAVE_PATH)
 	if err != OK:
 		print("Error saving settings: ", err)

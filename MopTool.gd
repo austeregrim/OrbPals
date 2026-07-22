@@ -69,9 +69,12 @@ func _clean_messes_in_radius():
 					items_to_remove.append(item)
 					
 	for item in items_to_remove:
+		if AudioManager:
+			AudioManager.play_mop_sweep()
 		main.active_items.erase(item)
 		if is_instance_valid(item):
 			item.queue_free()
+
 
 func _input(event):
 	var touch_pos = Vector2.ZERO

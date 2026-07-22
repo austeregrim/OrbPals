@@ -11,6 +11,10 @@ export(float) var wellness = 100.0
 export(float) var toilet = 0.0
 export(float) var elemental_energy = 0.0 # 0 to 100 meter for elemental power
 
+# Voice customization
+export(int) var voice_version = 0 # 0, 1, 2, or 3
+export(int) var voice_pitch = 1   # 0 (Low), 1 (Med), 2 (High)
+
 # Learning stats (0.0 to 1.0 confidence)
 export(float) var knows_dispenser = 0.0
 export(float) var knows_food_button = 0.0

@@ -16,6 +16,9 @@ onready var ball_btn = $Panel/Margin/VBox/ItemRow/BallBtn
 onready var mop_btn = $Panel/Margin/VBox/ItemRow/MopBtn
 onready var exit_btn = $Panel/Margin/VBox/TitleBar/ExitBtn
 var bottle_btn = null
+var chew_btn = null
+var stuffie_btn = null
+var boombox_btn = null
 
 onready var breed_dropdown = $Panel/Margin/VBox/BreedRow/BreedDropdown
 onready var summon_btn = $Panel/Margin/VBox/PetActionRow/SummonBtn
@@ -48,11 +51,43 @@ func _ready():
 		bottle_btn = Button.new()
 		bottle_btn.name = "BottleBtn"
 		bottle_btn.text = "Bottle"
-		bottle_btn.hint_tooltip = "Dispense Feeding Bottle (Infants & Sick Pets)"
+		bottle_btn.hint_tooltip = "Dispense Feeding Bottle"
 		bottle_btn.size_flags_horizontal = SIZE_EXPAND_FILL
 		bottle_btn.connect("pressed", self, "_on_bottle_pressed")
 		item_row.add_child(bottle_btn)
 		item_row.move_child(bottle_btn, 1)
+
+		# Add second row of items for Chew Toy, Stuffie, and Boombox
+		var item_row2 = HBoxContainer.new()
+		item_row2.name = "ItemRow2"
+
+		chew_btn = Button.new()
+		chew_btn.name = "ChewBtn"
+		chew_btn.text = "Chew"
+		chew_btn.hint_tooltip = "Dispense Chew Toy"
+		chew_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		chew_btn.connect("pressed", self, "_on_chew_pressed")
+		item_row2.add_child(chew_btn)
+
+		stuffie_btn = Button.new()
+		stuffie_btn.name = "StuffieBtn"
+		stuffie_btn.text = "Stuffie"
+		stuffie_btn.hint_tooltip = "Dispense Stuffed Animal"
+		stuffie_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		stuffie_btn.connect("pressed", self, "_on_stuffie_pressed")
+		item_row2.add_child(stuffie_btn)
+
+		boombox_btn = Button.new()
+		boombox_btn.name = "BoomboxBtn"
+		boombox_btn.text = "Boombox"
+		boombox_btn.hint_tooltip = "Dispense Music Boombox"
+		boombox_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		boombox_btn.connect("pressed", self, "_on_boombox_pressed")
+		item_row2.add_child(boombox_btn)
+
+		vbox.add_child(item_row2)
+		vbox.move_child(item_row2, item_row.get_index() + 1)
+
 
 	summon_btn.connect("pressed", self, "_on_summon_pressed")
 	recall_btn.connect("pressed", self, "_on_recall_pressed")
@@ -124,16 +159,33 @@ func populate_pet_roster(pet_list: Array):
 		breed_dropdown.add_item(pname)
 
 func _on_food_pressed():
+	if AudioManager: AudioManager.play_button_beep()
 	emit_signal("spawn_food", get_nozzle_global_position(), false)
 
 func _on_cookie_pressed():
+	if AudioManager: AudioManager.play_button_beep()
 	emit_signal("spawn_food", get_nozzle_global_position(), true)
 
 func _on_bottle_pressed():
+	if AudioManager: AudioManager.play_button_beep()
 	emit_signal("spawn_bottle", get_nozzle_global_position())
 
 func _on_ball_pressed():
-	emit_signal("spawn_toy", get_nozzle_global_position())
+	if AudioManager: AudioManager.play_button_beep()
+	emit_signal("spawn_toy", get_nozzle_global_position(), "ball")
+
+func _on_chew_pressed():
+	if AudioManager: AudioManager.play_button_beep()
+	emit_signal("spawn_toy", get_nozzle_global_position(), "chew")
+
+func _on_stuffie_pressed():
+	if AudioManager: AudioManager.play_button_beep()
+	emit_signal("spawn_toy", get_nozzle_global_position(), "stuffed_animal")
+
+func _on_boombox_pressed():
+	if AudioManager: AudioManager.play_button_beep()
+	emit_signal("spawn_toy", get_nozzle_global_position(), "boombox")
+
 
 
 func _on_summon_pressed():

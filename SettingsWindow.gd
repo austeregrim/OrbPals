@@ -33,6 +33,10 @@ var title_tap_count = 0
 onready var vbox = $Panel/Margin/VBox
 var undock_btn = null
 
+var master_slider: HSlider = null
+var sfx_slider: HSlider = null
+var music_slider: HSlider = null
+
 func _ready():
 	_ensure_scroll_container()
 	save_btn.connect("pressed", self, "_on_save_pressed")
@@ -42,6 +46,8 @@ func _ready():
 		theme_color_picker.connect("color_changed", self, "_on_theme_color_changed")
 	
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
+
+	_setup_audio_sliders()
 
 	if vbox and vbox.has_node("TitleBar"):
 		var tb = vbox.get_node("TitleBar")
@@ -61,6 +67,66 @@ func _ready():
 		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
 
 	setup_ui()
+
+func _setup_audio_sliders():
+	if not vbox:
+		return
+	if vbox.has_node("AudioSection"):
+		return
+		
+	var section = VBoxContainer.new()
+	section.name = "AudioSection"
+	
+	var lbl = Label.new()
+	lbl.text = "AUDIO VOLUME"
+	section.add_child(lbl)
+	
+	# Master
+	var m_row = HBoxContainer.new()
+	var m_lbl = Label.new()
+	m_lbl.text = "Master:"
+	m_lbl.rect_min_size.x = 60
+	m_row.add_child(m_lbl)
+	master_slider = HSlider.new()
+	master_slider.min_value = 0.0
+	master_slider.max_value = 1.0
+	master_slider.step = 0.05
+	master_slider.size_flags_horizontal = SIZE_EXPAND_FILL
+	m_row.add_child(master_slider)
+	section.add_child(m_row)
+
+	# SFX
+	var s_row = HBoxContainer.new()
+	var s_lbl = Label.new()
+	s_lbl.text = "SFX:"
+	s_lbl.rect_min_size.x = 60
+	s_row.add_child(s_lbl)
+	sfx_slider = HSlider.new()
+	sfx_slider.min_value = 0.0
+	sfx_slider.max_value = 1.0
+	sfx_slider.step = 0.05
+	sfx_slider.size_flags_horizontal = SIZE_EXPAND_FILL
+	s_row.add_child(sfx_slider)
+	section.add_child(s_row)
+
+	# Music
+	var mu_row = HBoxContainer.new()
+	var mu_lbl = Label.new()
+	mu_lbl.text = "Music:"
+	mu_lbl.rect_min_size.x = 60
+	mu_row.add_child(mu_lbl)
+	music_slider = HSlider.new()
+	music_slider.min_value = 0.0
+	music_slider.max_value = 1.0
+	music_slider.step = 0.05
+	music_slider.size_flags_horizontal = SIZE_EXPAND_FILL
+	mu_row.add_child(music_slider)
+	section.add_child(mu_row)
+
+	vbox.add_child(section)
+	if vbox.has_node("BtnRow"):
+		vbox.move_child(section, vbox.get_node("BtnRow").get_index())
+
 
 func toggle_undock():
 	is_undocked = not is_undocked
@@ -157,12 +223,22 @@ func setup_ui():
 	# 6. Theme Color
 	if theme_color_picker:
 		theme_color_picker.color = Settings.theme_color
+		
+	# 7. Audio Sliders
+	if master_slider:
+		master_slider.value = Settings.master_volume
+	if sfx_slider:
+		sfx_slider.value = Settings.sfx_volume
+	if music_slider:
+		music_slider.value = Settings.music_volume
 
 func _on_theme_color_changed(color: Color):
 	Settings.theme_color = color
 	Settings.emit_signal("theme_color_changed", color)
 
 func _on_save_pressed():
+	if AudioManager:
+		AudioManager.play_button_beep()
 	# Update Settings values
 	Settings.play_pen_mode = play_pen_check.pressed
 	Settings.screen_index = screen_dropdown.selected - 1
@@ -172,6 +248,19 @@ func _on_save_pressed():
 		Settings.target_fps = fps_values[fps_idx]
 		
 	Settings.window_detection = window_detection_check.pressed
+	if old_age_death_check:
+		Settings.pet_mortality_enabled = old_age_death_check.pressed
+		
+	if master_slider:
+		Settings.master_volume = master_slider.value
+		if AudioManager: AudioManager.set_master_volume(master_slider.value)
+	if sfx_slider:
+		Settings.sfx_volume = sfx_slider.value
+		if AudioManager: AudioManager.set_sfx_volume(sfx_slider.value)
+	if music_slider:
+		Settings.music_volume = music_slider.value
+		if AudioManager: AudioManager.set_music_volume(music_slider.value)
+
 	if old_age_death_check:
 		Settings.pet_mortality_enabled = old_age_death_check.pressed
 	

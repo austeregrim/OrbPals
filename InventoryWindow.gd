@@ -119,7 +119,9 @@ func refresh():
 			item_list.add_item("%s (x%d)" % [item_name.replace("_", " ").capitalize(), count])
 
 func _on_deconstruct_pressed():
+	if AudioManager: AudioManager.play_button_beep()
 	var selected = item_list.get_selected_items()
+
 	if selected.size() == 0:
 		return
 	var idx = selected[0]
