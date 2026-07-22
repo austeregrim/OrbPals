@@ -110,6 +110,7 @@ var transition_nozzle_pos = Vector2.ZERO
 var pending_breed_res = null
 var transition_scale = 1.0
 var relieve_corner_pos = Vector2.ZERO
+var relieve_had_accident: bool = false
 
 # Foot stepping variables
 var foot_positions = []
@@ -769,8 +770,8 @@ func _evaluate_states(delta):
 			_change_state(State.IDLE)
 		return
 
-	# Toilet override
-	if stats.toilet > 85.0 and current_state != State.RELIEVING_SELF:
+	# Toilet override: pet searches for corner starting at 80%
+	if stats.toilet >= 80.0 and current_state != State.RELIEVING_SELF:
 		_change_state(State.RELIEVING_SELF)
 		return
 		
@@ -924,12 +925,13 @@ func _change_state(new_state: int):
 			center_vel = Vector2(0, 150.0)
 			transition_scale = 0.1
 		State.RELIEVING_SELF:
-			var screen_w = OS.window_size.x
-			var screen_h = OS.window_size.y
+			relieve_had_accident = false
+			var bounds = _get_viewport_bounds()
+			var floor_y = bounds.end.y - base_radius
 			if randf() < 0.5:
-				relieve_corner_pos = Vector2(50.0, screen_h - 40.0)
+				relieve_corner_pos = Vector2(bounds.position.x + base_radius + 20.0, floor_y)
 			else:
-				relieve_corner_pos = Vector2(screen_w - 50.0, screen_h - 40.0)
+				relieve_corner_pos = Vector2(bounds.end.x - base_radius - 20.0, floor_y)
 		State.SELF_DISPENSE:
 			center_vel = Vector2.ZERO
 		State.WINDOW_SIT:
@@ -1124,27 +1126,39 @@ func _update_state_behavior(delta):
 				_change_state(State.IDLE)
 				
 		State.RELIEVING_SELF:
+			# Emergency / Accident: If toilet drive reaches 99%, pet goes right where it is (unhappy!)
+			if stats.toilet >= 99.0:
+				center_vel = Vector2.ZERO
+				var vibe = Vector2(sin(OS.get_ticks_msec() * 0.1) * 2.0, cos(OS.get_ticks_msec() * 0.06) * 1.5)
+				global_position += vibe
+				
+				if not relieve_had_accident:
+					relieve_had_accident = true
+					_show_learning_emote("😭")
+					stats.agitation = clamp(stats.agitation + 30.0, 0.0, 100.0)
+					stats.affection = max(0.0, stats.affection - 15.0)
+					stats.wellness = max(0.0, stats.wellness - 10.0)
+				
+				if state_timer > 2.0:
+					_spawn_poop()
+					stats.toilet = 0.0
+					_change_state(State.WANDER)
+				return
+				
+			# Normal corner search (between 80% and 99%)
 			var dir = (relieve_corner_pos - global_position).normalized()
 			var dist = global_position.distance_to(relieve_corner_pos)
-			center_vel = dir * 90.0
+			center_vel = dir * 100.0
 			
-			# Arrived at corner, play digging/relieving animation
-			if dist < 20.0:
+			# Check if arrived at corner or close to edge
+			var arrived = dist < 35.0 or (abs(global_position.x - relieve_corner_pos.x) < 30.0 and abs(global_position.y - relieve_corner_pos.y) < 35.0) or state_timer > 6.0
+			if arrived:
 				center_vel = Vector2.ZERO
 				var vibe = Vector2(sin(OS.get_ticks_msec() * 0.08) * 1.5, cos(OS.get_ticks_msec() * 0.04) * 1.0)
 				global_position += vibe
 				
-				if state_timer > 3.0:
-					# Spawn Poop!
-					var PoopScene = preload("res://Poop.tscn")
-					var poop = PoopScene.instance()
-					poop.global_position = global_position + Vector2.DOWN * 8.0
-					get_parent().add_child(poop)
-					
-					var main = get_parent()
-					if main and "active_items" in main:
-						main.active_items.append(poop)
-						
+				if state_timer > 2.5:
+					_spawn_poop()
 					stats.toilet = 0.0
 					_change_state(State.WANDER)
 					
@@ -2333,5 +2347,16 @@ func _check_food_competition_and_eat():
 				other_pet.center_vel = -away_dir * 120.0
 				other_pet._change_state(State.WANDER)
 	_change_state(State.EATING)
+
+func _spawn_poop():
+	var PoopScene = preload("res://Poop.tscn")
+	var poop = PoopScene.instance()
+	poop.global_position = global_position + Vector2.DOWN * 8.0
+	get_parent().add_child(poop)
+	
+	var main = get_parent()
+	if main and "active_items" in main:
+		main.active_items.append(poop)
+
 
 
