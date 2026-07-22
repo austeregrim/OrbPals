@@ -9,6 +9,7 @@ var TrashCanScene = preload("res://TrashCan.tscn")
 var SettingsWindowScene = preload("res://SettingsWindow.tscn")
 var GeneticBuilderWindowScene = preload("res://GeneticBuilderWindow.tscn")
 var InventoryWindowScene = preload("res://InventoryWindow.tscn")
+var NeedsPanelScene = preload("res://NeedsPanel.tscn")
 
 var DesktopWindowManagerScene = preload("res://DesktopWindowManager.gd")
 var RelationshipManagerScene = preload("res://RelationshipManager.gd")
@@ -21,11 +22,18 @@ var active_items = []
 var settings_window = null
 var genetic_builder_window = null
 var inventory_window = null
+var needs_panel = null
 
 var playpen_bg = null
 var last_passthrough_polygon = PoolVector2Array()
 var desktop_window_manager = null
 var relationship_manager = null
+
+# Active drawer tab state ("dispenser", "needs", "genetics", "inventory", "settings", "debug", or "")
+var active_drawer_tab = ""
+
+# Ordered list of all tab-capable side panels
+var side_panels_order = []
 
 # Materials & DNA inventory
 var inventory = {}
@@ -35,6 +43,10 @@ var pet_roster = []
 var saved_pet_states = {}
 
 func _ready():
+	# Check Android platform
+	if OS.get_name() == "Android":
+		Settings.play_pen_mode = true
+
 	desktop_window_manager = DesktopWindowManagerScene.new()
 	add_child(desktop_window_manager)
 	
@@ -43,14 +55,21 @@ func _ready():
 
 	get_viewport().connect("size_changed", self, "_on_viewport_size_changed")
 	apply_window_settings()
-	
-	# Spawn DispenserDevice first
+
+	# Instantiate panels upfront
+	_init_drawer_panels()
+
+	# Initialize Pet Roster (presets + user://pets/)
+	load_pet_roster()
+
+	# Spawn TrashCan
+	trash_can = TrashCanScene.instance()
+	add_child(trash_can)
+
+func _init_drawer_panels():
+	# 1. Dispenser Device (🚰)
 	dispenser_device = DispenserDeviceScene.instance()
 	add_child(dispenser_device)
-	dispenser_device.rect_global_position = Vector2((OS.window_size.x - dispenser_device.rect_size.x) / 2.0, 15.0)
-	dispenser_device.visible = true
-	
-	# Connect Dispenser signals
 	dispenser_device.connect("spawn_food", self, "spawn_food")
 	dispenser_device.connect("spawn_toy", self, "spawn_toy")
 	dispenser_device.connect("use_mop_tool", self, "use_mop_tool")
@@ -58,24 +77,112 @@ func _ready():
 	dispenser_device.connect("recall_pet", self, "recall_pet")
 	dispenser_device.connect("recall_all_pets", self, "recall_all_pets")
 	dispenser_device.connect("euthanize_pet", self, "euthanize_pet")
-	dispenser_device.connect("open_genetic_builder", self, "open_genetic_builder")
-	dispenser_device.connect("open_inventory", self, "open_inventory")
-	
-	# Initialize Pet Roster (presets + user://pets/)
-	load_pet_roster()
-	
-	# Spawn DebugPanel
+
+	# 2. Needs Panel (🐾)
+	needs_panel = NeedsPanelScene.instance()
+	add_child(needs_panel)
+
+	# 3. Genetic Builder Window (🥚)
+	genetic_builder_window = GeneticBuilderWindowScene.instance()
+	add_child(genetic_builder_window)
+	genetic_builder_window.connect("pet_hatched", self, "_on_pet_hatched")
+
+	# 4. Inventory Window (📦)
+	inventory_window = InventoryWindowScene.instance()
+	add_child(inventory_window)
+
+	# 5. Settings Window (⚙️)
+	settings_window = SettingsWindowScene.instance()
+	add_child(settings_window)
+	settings_window.connect("settings_applied", self, "apply_window_settings")
+
+	# 6. Debug Panel (🐛)
 	debug_panel = DebugPanelScene.instance()
 	add_child(debug_panel)
-	debug_panel.visible = false
 	debug_panel.connect("drive_changed", self, "_on_debug_drive_changed")
 	debug_panel.connect("decay_toggled", self, "_on_debug_decay_toggled")
 	if debug_panel.has_signal("decay_multiplier_changed"):
 		debug_panel.connect("decay_multiplier_changed", self, "_on_debug_decay_multiplier_changed")
 
-	# Spawn TrashCan
-	trash_can = TrashCanScene.instance()
-	add_child(trash_can)
+	# Ordered list for vertical tab ear alignment starting 1/20th down
+	side_panels_order = [
+		{"id": "dispenser", "panel": dispenser_device},
+		{"id": "needs", "panel": needs_panel},
+		{"id": "genetics", "panel": genetic_builder_window},
+		{"id": "inventory", "panel": inventory_window},
+		{"id": "settings", "panel": settings_window},
+		{"id": "debug", "panel": debug_panel}
+	]
+
+	# Connect tab ear signals and make panels visible so tab ears remain visible at all times
+	for entry in side_panels_order:
+		var p = entry["panel"]
+		if p.has_signal("tab_clicked"):
+			p.connect("tab_clicked", self, "toggle_drawer_panel")
+		p.visible = true
+
+	# Align all panels offscreen initially
+	_reposition_all_side_panels(false)
+
+func _reposition_all_side_panels(animated: bool = false):
+	var vp = get_viewport_rect().size
+	var top_start_y = vp.y * 0.05 # 1/20th down from top!
+	var tab_height = 44.0
+	var tab_spacing = 6.0
+
+	for i in range(side_panels_order.size()):
+		var entry = side_panels_order[i]
+		var tab_id = entry["id"]
+		var panel = entry["panel"]
+
+		if not is_instance_valid(panel):
+			continue
+
+		var tab_y = top_start_y + i * (tab_height + tab_spacing)
+		var is_open = (active_drawer_tab == tab_id)
+
+		var target_x = vp.x - panel.rect_size.x if is_open else vp.x
+		var target_pos = Vector2(target_x, tab_y)
+
+		# Ensure panel itself stays visible so child PanelTabEar remains visible
+		panel.visible = true
+
+		# Update active styling on tab ear
+		if "tab_ear" in panel and is_instance_valid(panel.tab_ear):
+			panel.tab_ear.set_active(is_open)
+
+		if animated:
+			var t = create_tween()
+			if t:
+				t.tween_property(panel, "rect_global_position", target_pos, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			else:
+				panel.rect_global_position = target_pos
+		else:
+			panel.rect_global_position = target_pos
+
+func toggle_drawer_panel(tab_name: String):
+	if active_drawer_tab == tab_name:
+		# Close currently open panel
+		active_drawer_tab = ""
+	else:
+		active_drawer_tab = tab_name
+		var panel = _get_panel_for_tab(tab_name)
+		if panel:
+			panel.raise()
+			if tab_name == "inventory" and panel.has_method("refresh"):
+				panel.call("refresh")
+			elif tab_name == "settings" and panel.has_method("setup_ui"):
+				panel.call("setup_ui")
+			elif tab_name == "debug" and active_pets.size() > 0 and panel.has_method("setup"):
+				panel.call("setup", active_pets[0])
+
+	_reposition_all_side_panels(true)
+
+func _get_panel_for_tab(tab_name: String) -> Control:
+	for entry in side_panels_order:
+		if entry["id"] == tab_name:
+			return entry["panel"]
+	return null
 
 func _ensure_default_preset_files():
 	var dir = Directory.new()
@@ -163,27 +270,6 @@ func load_pet_roster():
 	if is_instance_valid(dispenser_device):
 		dispenser_device.call("populate_pet_roster", pet_roster)
 
-func get_custom_pets_count() -> int:
-	var count = 0
-	for p in pet_roster:
-		if p.get("type") == "custom":
-			count += 1
-	return count
-
-func save_custom_pet(pet_dict: Dictionary):
-	var dir = Directory.new()
-	if not dir.dir_exists("user://pets"):
-		dir.make_dir_recursive("user://pets")
-		
-	var pid = pet_dict.get("pet_id", "pet_" + str(randi()))
-	var file_path = "user://pets/" + pid + ".json"
-	var f = File.new()
-	if f.open(file_path, File.WRITE) == OK:
-		f.store_string(JSON.print(pet_dict, "  "))
-		f.close()
-		
-	load_pet_roster()
-
 func summon_pet(pet_info: Dictionary):
 	var pid = pet_info.get("pet_id", "")
 	for existing in active_pets:
@@ -223,66 +309,49 @@ func recall_all_pets():
 				target_pet.call("return_to_dispenser", nozzle_pos, target_pet.active_breed)
 
 func open_genetic_builder():
-	if not genetic_builder_window:
-		genetic_builder_window = GeneticBuilderWindowScene.instance()
-		add_child(genetic_builder_window)
-		genetic_builder_window.connect("pet_hatched", self, "_on_pet_hatched")
-	genetic_builder_window.call("open")
+	toggle_drawer_panel("genetics")
 
 func _on_pet_hatched(pet_data: Dictionary):
-	# Automatically summon newly hatched pet
 	summon_pet(pet_data)
 
 func open_inventory():
-	if not inventory_window:
-		inventory_window = InventoryWindowScene.instance()
-		add_child(inventory_window)
-	inventory_window.call("open")
+	toggle_drawer_panel("inventory")
+
+func open_settings():
+	toggle_drawer_panel("settings")
+
+func toggle_debug_panel():
+	toggle_drawer_panel("debug")
 
 func _process(_delta):
-	if Settings.play_pen_mode:
-		if last_passthrough_polygon.size() > 0:
-			last_passthrough_polygon = PoolVector2Array()
-			OS.set_window_mouse_passthrough(PoolVector2Array())
+	if Settings.play_pen_mode or OS.get_name() == "Android":
 		return
 
 	var polygons = []
 	
-	# 1. Add all active Pets' polygons
+	# 1. Active Pets
 	for p in active_pets:
 		if is_instance_valid(p) and p.has_method("get_click_polygon"):
 			var pet_poly = p.call("get_click_polygon")
 			if pet_poly.size() > 0:
 				polygons.append(pet_poly)
-			
-	# 2. Add DebugPanel's polygon
-	if is_instance_valid(debug_panel) and debug_panel.visible:
-		if debug_panel.has_method("get_panel_rect"):
-			var panel_rect = debug_panel.call("get_panel_rect")
-			polygons.append(_rect_to_poly(panel_rect))
-		
-	# 3. Add DispenserDevice's polygon
-	if is_instance_valid(dispenser_device) and dispenser_device.visible:
-		if dispenser_device.has_method("get_panel_rect"):
-			var disp_rect = dispenser_device.call("get_panel_rect")
-			polygons.append(_rect_to_poly(disp_rect))
-		
-	# 4. Add SettingsWindow's polygon
-	if is_instance_valid(settings_window) and settings_window.visible:
-		if settings_window.has_method("get_panel_rect"):
-			polygons.append(_rect_to_poly(settings_window.call("get_panel_rect")))
-			
-	# 5. Add GeneticBuilderWindow's polygon
-	if is_instance_valid(genetic_builder_window) and genetic_builder_window.visible:
-		if genetic_builder_window.has_method("get_panel_rect"):
-			polygons.append(_rect_to_poly(genetic_builder_window.call("get_panel_rect")))
 
-	# 6. Add InventoryWindow's polygon
-	if is_instance_valid(inventory_window) and inventory_window.visible:
-		if inventory_window.has_method("get_panel_rect"):
-			polygons.append(_rect_to_poly(inventory_window.call("get_panel_rect")))
+	# 2. Side Panels: Hanging tab ears and active open panel rect
+	for entry in side_panels_order:
+		var tab_id = entry["id"]
+		var panel = entry["panel"]
+		if is_instance_valid(panel):
+			# Include hanging tab ear rect
+			if panel.has_method("get_tab_rect"):
+				var tr = panel.call("get_tab_rect")
+				if tr.size.x > 0:
+					polygons.append(_rect_to_poly(tr))
+			
+			# If this is the active open panel, include its main panel rect
+			if active_drawer_tab == tab_id and panel.has_method("get_panel_rect"):
+				polygons.append(_rect_to_poly(panel.call("get_panel_rect")))
 
-	# 7. Add active Popups/ContextMenus
+	# 3. Popups & ContextMenus
 	var popup_nodes = get_children()
 	if get_viewport():
 		popup_nodes += get_viewport().get_children()
@@ -291,7 +360,7 @@ func _process(_delta):
 			var menu_rect = Rect2(child.rect_global_position, child.rect_size)
 			polygons.append(_rect_to_poly(menu_rect))
 		
-	# 8. Add active items' polygons
+	# 4. Active items
 	for item in active_items:
 		if is_instance_valid(item) and item.has_method("get_click_polygon"):
 			var item_poly = item.call("get_click_polygon")
@@ -361,16 +430,18 @@ func apply_window_settings():
 	else:
 		Engine.iterations_per_second = 60
 
-	if Settings.play_pen_mode:
+	if Settings.play_pen_mode or OS.get_name() == "Android":
 		OS.window_borderless = false
 		get_tree().get_root().set_transparent_background(false)
 		OS.set_window_mouse_passthrough(PoolVector2Array())
+		last_passthrough_polygon = PoolVector2Array()
 		
-		var screen_idx = OS.current_screen
-		var screen_pos = OS.get_screen_position(screen_idx)
-		var screen_size = OS.get_screen_size(screen_idx)
-		OS.window_size = Vector2(1024, 768)
-		OS.window_position = screen_pos + (screen_size - Vector2(1024, 768)) / 2.0
+		if OS.get_name() != "Android":
+			var screen_idx = OS.current_screen
+			var screen_pos = OS.get_screen_position(screen_idx)
+			var screen_size = OS.get_screen_size(screen_idx)
+			OS.window_size = Vector2(1024, 768)
+			OS.window_position = screen_pos + (screen_size - Vector2(1024, 768)) / 2.0
 	else:
 		OS.window_borderless = true
 		get_tree().get_root().set_transparent_background(true)
@@ -396,39 +467,62 @@ func apply_window_settings():
 			OS.window_size = OS.get_screen_size(idx)
 			
 	update_playpen_bg()
-
-	if is_instance_valid(dispenser_device):
-		dispenser_device.rect_global_position = Vector2((OS.window_size.x - dispenser_device.rect_size.x) / 2.0, 15.0)
+	call_deferred("_reposition_all_side_panels", false)
 
 func update_playpen_bg():
-	if Settings.play_pen_mode:
+	if Settings.play_pen_mode or OS.get_name() == "Android":
+		OS.set_window_mouse_passthrough(PoolVector2Array())
+		last_passthrough_polygon = PoolVector2Array()
+		var vp_size = get_viewport_rect().size
 		if not playpen_bg:
 			playpen_bg = Panel.new()
+			playpen_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			var style = StyleBoxFlat.new()
 			style.bg_color = Color("1e1e2e")
 			style.border_width_left = 6
 			style.border_width_top = 6
 			style.border_width_right = 6
 			style.border_width_bottom = 6
-			style.border_color = Color("313244")
+			style.border_color = Color("45475a")
+			style.corner_radius_top_left = 4
+			style.corner_radius_top_right = 4
+			style.corner_radius_bottom_right = 4
+			style.corner_radius_bottom_left = 4
 			playpen_bg.add_stylebox_override("panel", style)
 			add_child(playpen_bg)
 			move_child(playpen_bg, 0)
-		playpen_bg.rect_size = OS.window_size
+		playpen_bg.rect_position = Vector2.ZERO
+		playpen_bg.rect_size = vp_size
 		playpen_bg.visible = true
 	else:
 		if playpen_bg:
 			playpen_bg.visible = false
 
-func open_settings():
-	if not settings_window:
-		settings_window = SettingsWindowScene.instance()
-		add_child(settings_window)
-		settings_window.connect("settings_applied", self, "apply_window_settings")
-	settings_window.call("open")
+var last_click_time: float = 0.0
+var last_click_pos: Vector2 = Vector2.ZERO
 
 func _unhandled_input(event):
-	if event is InputEventKey and event.pressed:
+	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
+		var now = OS.get_ticks_msec() * 0.001
+		var pos = event.global_position
+		var delta_t = now - last_click_time
+		var dist = pos.distance_to(last_click_pos)
+		
+		if delta_t <= 0.38 and dist <= 30.0:
+			# Double click / double tap: walk pet to tap location with dig chance
+			last_click_time = 0.0
+			for p in active_pets:
+				if is_instance_valid(p) and p.has_method("walk_to_tap_location"):
+					p.call("walk_to_tap_location", pos, true)
+		else:
+			# Single click / single tap: Cage glass tap attention!
+			last_click_time = now
+			last_click_pos = pos
+			for p in active_pets:
+				if is_instance_valid(p) and p.has_method("on_glass_tapped"):
+					p.call("on_glass_tapped", pos)
+
+	elif event is InputEventKey and event.pressed:
 		match event.scancode:
 			KEY_F:
 				spawn_food(get_global_mouse_position())
@@ -475,12 +569,6 @@ func cure_pets():
 		if is_instance_valid(p) and p.has_method("cure"):
 			p.call("cure")
 
-func toggle_debug_panel():
-	if is_instance_valid(debug_panel):
-		debug_panel.visible = !debug_panel.visible
-		if debug_panel.visible and active_pets.size() > 0:
-			debug_panel.call("setup", active_pets[0])
-
 func remove_item(item):
 	if item in active_items:
 		active_items.erase(item)
@@ -515,25 +603,24 @@ func _on_pet_returned_to_box(arg1, arg2 = null):
 		target_pet.queue_free()
 
 func _on_viewport_size_changed():
+	if Settings.play_pen_mode or OS.get_name() == "Android":
+		OS.set_window_mouse_passthrough(PoolVector2Array())
+		last_passthrough_polygon = PoolVector2Array()
 	update_playpen_bg()
+	call_deferred("_reposition_all_side_panels", false)
 
 func euthanize_pet(pet_info: Dictionary):
 	var pid = pet_info.get("pet_id", "")
-	# 1. Comical exit trajectory if pet is currently active on desktop
 	for target_pet in active_pets:
 		if is_instance_valid(target_pet) and target_pet.pet_id == pid:
-			# Rocket launch comical effect!
 			target_pet.center_vel = Vector2(0, -2500.0)
 			active_pets.erase(target_pet)
 			get_tree().create_timer(1.2).connect("timeout", target_pet, "queue_free")
 			break
 			
-	# 2. Delete pet save file from user://pets/
 	var file_path = "user://pets/" + pid + ".json"
 	var dir = Directory.new()
 	if dir.file_exists(file_path):
 		dir.remove(file_path)
 		
-	# 3. Reload pet roster
 	load_pet_roster()
-

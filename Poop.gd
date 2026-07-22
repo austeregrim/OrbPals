@@ -45,7 +45,8 @@ func _physics_process(delta):
 		global_position += velocity * delta
 		
 		# Floor bounce
-		var floor_y = OS.window_size.y - radius
+		var vp_size = get_viewport_rect().size if get_viewport() else OS.window_size
+		var floor_y = vp_size.y - radius
 		if global_position.y >= floor_y:
 			global_position.y = floor_y
 			velocity.y = -velocity.y * bounce
@@ -55,7 +56,7 @@ func _physics_process(delta):
 				velocity.y = 0
 				
 		# Wall bounds
-		global_position.x = clamp(global_position.x, radius, OS.window_size.x - radius)
+		global_position.x = clamp(global_position.x, radius, vp_size.x - radius)
 		
 	update()
 

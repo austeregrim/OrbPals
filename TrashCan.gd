@@ -8,14 +8,16 @@ var is_hot = false  # true when an item is being dragged nearby
 var hot_timer = 0.0
 
 func _ready():
-	# Position at bottom-right corner
-	var bounds = Rect2(Vector2.ZERO, OS.window_size)
-	global_position = Vector2(bounds.end.x - TRASH_MARGIN, bounds.end.y - TRASH_MARGIN)
+	_update_position()
+
+func _update_position():
+	var vp_size = get_viewport_rect().size if get_viewport() else OS.window_size
+	global_position = Vector2(vp_size.x - TRASH_MARGIN, vp_size.y - TRASH_MARGIN)
 
 func _process(delta):
-	# Update position in case window resizes
-	var bounds = Rect2(Vector2.ZERO, OS.window_size)
-	global_position = Vector2(bounds.end.x - TRASH_MARGIN, bounds.end.y - TRASH_MARGIN)
+	_update_position()
+
+	# Detect if any item is being dragged
 
 	# Detect if any item is being dragged
 	var main = get_parent()

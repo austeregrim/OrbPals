@@ -1,9 +1,11 @@
 extends Control
 
-onready var close_btn = $Panel/Margin/VBox/TitleBar/CloseBtn
+signal tab_clicked(tab_id)
+
 onready var item_list = $Panel/Margin/VBox/ItemList
 onready var deconstruct_btn = $Panel/Margin/VBox/DeconstructBtn
 onready var dna_label = $Panel/Margin/VBox/DnaLabel
+onready var tab_ear = $PanelTabEar
 
 var is_dragging = false
 var drag_offset = Vector2.ZERO
@@ -25,10 +27,17 @@ var material_breakdown = {
 }
 
 func _ready():
-	close_btn.connect("pressed", self, "_on_close_pressed")
 	deconstruct_btn.connect("pressed", self, "_on_deconstruct_pressed")
 	$Panel/Margin/VBox/TitleBar.connect("gui_input", self, "_on_titlebar_gui_input")
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
+
+	if tab_ear:
+		tab_ear.tab_id = "inventory"
+		tab_ear.icon_text = "📦"
+		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
+
+func _on_tab_ear_clicked(tab_id: String):
+	emit_signal("tab_clicked", tab_id)
 
 func _on_titlebar_gui_input(event):
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
@@ -101,8 +110,10 @@ func _on_deconstruct_pressed():
 				
 			refresh()
 
-func _on_close_pressed():
-	visible = false
-
 func get_panel_rect() -> Rect2:
 	return $Panel.get_global_rect()
+
+func get_tab_rect() -> Rect2:
+	if is_instance_valid(tab_ear):
+		return tab_ear.get_tab_rect()
+	return Rect2()

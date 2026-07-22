@@ -29,6 +29,8 @@ var genetic_seed: int = 123456
 var life_stage: String = "adult" # hatchling, juvenile, adult, senior, deceased
 var age_seconds: float = 0.0
 var time_outside_dispenser_seconds: float = 0.0
+var will_dig_on_arrival: bool = false
+var self_dispense_phase: int = 0
 
 # Procedural Features
 var has_fur: bool = false
@@ -203,7 +205,8 @@ func _ready():
 func _physics_process(delta):
 	# 1. Decay drives if enabled
 	if decay_enabled:
-		stats.decay(delta)
+		var is_moving = (center_vel.length() > 10.0 or current_state == State.WANDER or current_state == State.CHASE_ITEM or current_state == State.PLAY_WITH_PET or current_state == State.DIGGING)
+		stats.decay(delta, is_moving)
 		
 	# 1.2 Elemental Energy Charge & Discharge (Juvenile/Adult/Senior only)
 	if can_use_ability() and stats != null:
@@ -769,7 +772,7 @@ func _evaluate_states(delta):
 			elif is_instance_valid(other_pet) and global_position.distance_to(other_pet.global_position) < base_radius * 3.5:
 				partner_pet = other_pet
 				_change_state(State.PLAY_WITH_PET)
-			elif randf() < 0.004:
+			elif stats.curiosity < 45.0 and randf() < 0.0015:
 				_change_state(State.DIGGING)
 			elif stats.affection < 50.0:
 				_change_state(State.CHASE_CURSOR)
@@ -833,7 +836,8 @@ func _evaluate_states(delta):
 					if main and main.has_method("remove_item"):
 						main.call("remove_item", target_item)
 				target_item = null
-				_change_state(State.IDLE)
+				if not _scan_for_food_or_treat():
+					_change_state(State.IDLE)
 
 func _change_state(new_state: int):
 	current_state = new_state
@@ -898,8 +902,29 @@ func _update_state_behavior(delta):
 			
 			# Check if reached target
 			if global_position.distance_to(target_wander_pos) < 20.0 or state_timer > 6.0:
+				if will_dig_on_arrival:
+					will_dig_on_arrival = false
+					_change_state(State.DIGGING)
+					return
+				var bounds = _get_viewport_bounds()
+				if global_position.x >= bounds.end.x - 70.0 and stats and stats.knows_food_button < 1.0:
+					# Pet curiosity tab / dispenser button interaction!
+					var main = get_parent()
+					if main:
+						if main.has_method("toggle_drawer_panel"):
+							main.call("toggle_drawer_panel", "dispenser")
+						var nozzle_pos = Vector2(OS.window_size.x / 2.0, 150.0)
+						if "dispenser_device" in main and is_instance_valid(main.dispenser_device):
+							nozzle_pos = main.dispenser_device.get_nozzle_global_position()
+						if main.has_method("spawn_food"):
+							main.call("spawn_food", nozzle_pos, false)
+							
+						stats.knows_food_button = clamp(stats.knows_food_button + 0.35, 0.0, 1.0)
+						stats.knows_dispenser = clamp(stats.knows_dispenser + 0.35, 0.0, 1.0)
+						_show_learning_emote("💡")
+						_scan_for_food_or_treat()
+						return
 				if stats.curiosity < 30.0:
-					# Curiosity satisfied by reaching boundary
 					stats.curiosity = 100.0
 				_change_state(State.IDLE)
 				
@@ -949,13 +974,15 @@ func _update_state_behavior(delta):
 					if stats.boredom >= 100.0:
 						toy_play_time = 0.0
 						target_item = null
-						_change_state(State.IDLE)
+						if not _scan_for_food_or_treat():
+							_change_state(State.IDLE)
 				elif dist_to_item < base_radius + 15.0:
 					# --- FOOD ---
-					_change_state(State.EATING)
+					_check_food_competition_and_eat()
 			else:
 				toy_play_time = 0.0
-				_change_state(State.IDLE)
+				if not _scan_for_food_or_treat():
+					_change_state(State.IDLE)
 				
 		State.SLEEPING:
 			# Wake up slowly
@@ -1041,32 +1068,51 @@ func _update_state_behavior(delta):
 					_change_state(State.WANDER)
 					
 		State.SELF_DISPENSE:
-			var nozzle_pos = Vector2(OS.window_size.x / 2.0, 150.0)
 			var main = get_parent()
+			var bounds = _get_viewport_bounds()
+			var tab_pos = Vector2(bounds.end.x - 30.0, bounds.position.y + bounds.size.y * 0.08)
+			var nozzle_pos = Vector2(bounds.size.x / 2.0, 150.0)
+			
 			if main and "dispenser_device" in main and is_instance_valid(main.dispenser_device):
 				nozzle_pos = main.dispenser_device.get_nozzle_global_position()
 				
-			var dir = (nozzle_pos - global_position).normalized()
-			var dist = global_position.distance_to(nozzle_pos)
-			center_vel = dir * 120.0
-			
-			# Arrived at nozzle, jump-bump it!
-			if dist < 25.0:
-				center_vel = Vector2.ZERO
-				if main and main.has_method("spawn_food"):
-					main.call("spawn_food", nozzle_pos, false)
-					
-				# Back away and start falling
-				center_vel.y = 80.0
-				is_falling = true
+			if self_dispense_phase == 0:
+				# Step 1: Walk to Dispenser Tab Ear on right edge
+				var dir = (tab_pos - global_position).normalized()
+				var dist = global_position.distance_to(tab_pos)
+				center_vel = dir * 130.0
 				
-				# Try to immediately target the food
-				var food = _find_closest_item(true)
-				if is_instance_valid(food):
-					target_item = food
-					_change_state(State.CHASE_ITEM)
-				else:
-					_change_state(State.IDLE)
+				if dist < 35.0:
+					# Arrived at tab ear: Touch/tap tab ear to slide open drawer!
+					if main and main.has_method("toggle_drawer_panel"):
+						main.call("toggle_drawer_panel", "dispenser")
+					_show_learning_emote("🚰")
+					self_dispense_phase = 1
+					state_timer = 0.0
+			else:
+				# Step 2: Walk to Food Button in the open Dispenser drawer
+				var button_pos = nozzle_pos + Vector2(-40.0, 20.0)
+				if main and "dispenser_device" in main and is_instance_valid(main.dispenser_device):
+					var disp_rect = main.dispenser_device.get_panel_rect()
+					button_pos = disp_rect.position + Vector2(50.0, 50.0)
+					
+				var dir = (button_pos - global_position).normalized()
+				var dist = global_position.distance_to(button_pos)
+				center_vel = dir * 130.0
+				
+				if dist < 30.0 or state_timer > 4.0:
+					# Arrived at Food Button: Touch/tap button to dispense food!
+					if main and main.has_method("spawn_food"):
+						main.call("spawn_food", nozzle_pos, false)
+						
+					if stats:
+						stats.knows_food_button = clamp(stats.knows_food_button + 0.35, 0.0, 1.0)
+						stats.knows_dispenser = clamp(stats.knows_dispenser + 0.35, 0.0, 1.0)
+					_show_learning_emote("💡")
+					self_dispense_phase = 0
+					
+					if not _scan_for_food_or_treat():
+						_change_state(State.IDLE)
 		State.WINDOW_SIT:
 			var dist = global_position.distance_to(target_wander_pos)
 			if dist > 15.0:
@@ -1083,9 +1129,14 @@ func _update_state_behavior(delta):
 
 func _pick_random_wander_target():
 	var bounds = _get_viewport_bounds()
-	var x = rand_range(bounds.position.x + 100.0, bounds.end.x - 100.0)
-	var y = rand_range(bounds.position.y + 100.0, bounds.end.y - 100.0)
-	target_wander_pos = Vector2(x, y)
+	if stats and stats.knows_food_button < 1.0 and (stats.hunger < 75.0 or stats.curiosity < 75.0) and randf() < 0.5:
+		var x = bounds.end.x - 30.0
+		var y = rand_range(bounds.position.y + 60.0, bounds.end.y - 60.0)
+		target_wander_pos = Vector2(x, y)
+	else:
+		var x = rand_range(bounds.position.x + 100.0, bounds.end.x - 100.0)
+		var y = rand_range(bounds.position.y + 100.0, bounds.end.y - 100.0)
+		target_wander_pos = Vector2(x, y)
 
 func _find_curiosity_boundary_target():
 	var bounds = _get_viewport_bounds()
@@ -2033,16 +2084,81 @@ func _find_closest_other_pet():
 
 func _on_digging_complete():
 	var main = get_parent()
-	if not main or not ("inventory" in main):
+	if not main:
 		return
-	var possible_materials = [
-		"ancient_fossil", "starlight_crystal", "bio_slime", 
-		"glowing_amber", "meteor_shard", "radiant_spore", "elastic_rubber"
-	]
-	var mat = possible_materials[randi() % possible_materials.size()]
-	main.inventory[mat] = main.inventory.get(mat, 0) + 1
-	if main.has_method("open_inventory") and randf() < 0.2:
-		pass # silently collected!
+		
+	# 1. Spawn DigHole
+	var DigHoleScene = load("res://DigHole.tscn")
+	if DigHoleScene:
+		var hole = DigHoleScene.instance()
+		hole.global_position = global_position + Vector2(0, 10.0)
+		main.add_child(hole)
+		
+	# 2. Spawn DigItem 25% of the time (75% of the time just leaves a dirt hole)
+	if randf() < 0.25:
+		var possible_materials = [
+			"ancient_fossil", "starlight_crystal", "bio_slime", 
+			"glowing_amber", "meteor_shard", "radiant_spore", "elastic_rubber", "gene_fragment"
+		]
+		var mat = possible_materials[randi() % possible_materials.size()]
+		
+		var DigItemScene = load("res://DigItem.tscn")
+		if DigItemScene:
+			var dig_item = DigItemScene.instance()
+			dig_item.global_position = global_position + Vector2(rand_range(-25, 25), rand_range(-5, 5))
+			dig_item.setup_item(mat)
+			main.add_child(dig_item)
+			if "active_items" in main:
+				main.active_items.append(dig_item)
+				
+			# 3. Check pet learning for auto-collecting into inventory
+			if stats and stats.knows_inventory >= 1.0:
+				dig_item.collect_item()
+				_show_learning_emote("🎒")
+			elif stats and randf() < stats.knows_inventory:
+				stats.knows_inventory = clamp(stats.knows_inventory + 0.25, 0.0, 1.0)
+				dig_item.collect_item()
+				_show_learning_emote("🎒")
+
+func _scan_for_food_or_treat() -> bool:
+	var item = _find_closest_food_or_treat()
+	if is_instance_valid(item) and current_state != State.SLEEPING and current_state != State.SICK:
+		target_item = item
+		_change_state(State.CHASE_ITEM)
+		return true
+	return false
+
+func _find_closest_food_or_treat() -> Node2D:
+	var main = get_parent()
+	if not main or not ("active_items" in main):
+		return null
+	var closest = null
+	var min_d = 99999.0
+	for item in main.active_items:
+		if is_instance_valid(item):
+			var is_food = item.get("is_food") == true or item.filename.find("Food") != -1
+			var is_treat = item.get("is_treat") == true
+			if is_food or is_treat:
+				var d = global_position.distance_to(item.global_position)
+				if d < min_d:
+					min_d = d
+					closest = item
+	return closest
+
+func _show_learning_emote(icon_text: String):
+	var main = get_parent()
+	if not main:
+		return
+	var lbl = Label.new()
+	lbl.text = icon_text
+	lbl.rect_global_position = global_position + Vector2(-10, -35)
+	main.add_child(lbl)
+	
+	var t = main.create_tween()
+	if t:
+		t.tween_property(lbl, "rect_global_position:y", lbl.rect_global_position.y - 30.0, 1.2)
+		t.parallel().tween_property(lbl, "modulate:a", 0.0, 1.2)
+		t.tween_callback(lbl, "queue_free")
 
 
 	# Poop proximity sickness check
@@ -2062,5 +2178,46 @@ func _on_digging_complete():
 	else:
 		# Cool down/reset the proximity timer when away from poop
 		poop_proximity_timer = max(0.0, poop_proximity_timer - get_physics_process_delta_time() * 2.0)
+
+func on_glass_tapped(tap_pos: Vector2):
+	if current_state == State.SLEEPING or current_state == State.SICK or current_state == State.RETURNING_TO_DISPENSER:
+		return
+	look_dir = (tap_pos - global_position).normalized()
+	head_shake_timer = 0.35
+	head_shake_intensity = 5.0
+	if stats:
+		stats.affection = clamp(stats.affection + 4.0, 0.0, 100.0)
+	_show_learning_emote("👀")
+
+func walk_to_tap_location(tap_pos: Vector2, try_dig: bool = true):
+	if current_state == State.SLEEPING or current_state == State.SICK or current_state == State.RETURNING_TO_DISPENSER:
+		return
+	target_wander_pos = tap_pos
+	will_dig_on_arrival = try_dig and (randf() < 0.50)
+	_change_state(State.WANDER)
+
+func _check_food_competition_and_eat():
+	var other_pet = _find_closest_other_pet()
+	if is_instance_valid(other_pet):
+		var dist_to_other = global_position.distance_to(other_pet.global_position)
+		if dist_to_other < base_radius * 4.5:
+			# GROWLING & FOOD GUARDING!
+			var away_dir = (global_position - other_pet.global_position).normalized()
+			look_dir = away_dir
+			head_shake_timer = 0.5
+			head_shake_intensity = 6.0
+			
+			if stats:
+				stats.agitation = clamp(stats.agitation + 20.0, 0.0, 100.0)
+			
+			_show_learning_emote("😡")
+			
+			# If rival pet is also targeting or chasing this food, rival pet backs off!
+			if is_instance_valid(target_item) and other_pet.target_item == target_item:
+				other_pet.target_item = null
+				other_pet._show_learning_emote("😿")
+				other_pet.center_vel = -away_dir * 120.0
+				other_pet._change_state(State.WANDER)
+	_change_state(State.EATING)
 
 

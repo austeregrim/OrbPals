@@ -74,10 +74,11 @@ func _physics_process(delta):
 		global_position += velocity * delta
 		
 		# Boundary bounce check
-		var floor_y = OS.window_size.y - radius
+		var vp_size = get_viewport().get_visible_rect().size if get_viewport() else OS.window_size
+		var floor_y = vp_size.y - radius
 		var ceiling_y = radius
 		var wall_l = radius
-		var wall_r = OS.window_size.x - radius
+		var wall_r = vp_size.x - radius
 		
 		if global_position.y >= floor_y:
 			global_position.y = floor_y
@@ -98,8 +99,8 @@ func _physics_process(delta):
 			global_position.x += sin(OS.get_ticks_msec() * 0.015) * 0.4
 			
 		# Keep within screen boundaries
-		global_position.x = clamp(global_position.x, radius, OS.window_size.x - radius)
-		global_position.y = clamp(global_position.y, radius, OS.window_size.y - radius)
+		global_position.x = clamp(global_position.x, radius, vp_size.x - radius)
+		global_position.y = clamp(global_position.y, radius, vp_size.y - radius)
 
 	update()
 

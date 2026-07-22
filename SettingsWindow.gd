@@ -1,6 +1,7 @@
 extends Control
 
 signal settings_applied
+signal tab_clicked(tab_id)
 
 onready var play_pen_check = $Panel/Margin/VBox/PlayPenRow/PlayPenCheck
 onready var screen_dropdown = $Panel/Margin/VBox/ScreenRow/ScreenDropdown
@@ -9,7 +10,7 @@ onready var window_detection_check = $Panel/Margin/VBox/WindowObstaclesRow/Windo
 
 onready var save_btn = $Panel/Margin/VBox/BtnRow/SaveBtn
 onready var cancel_btn = $Panel/Margin/VBox/BtnRow/CancelBtn
-onready var close_btn = $Panel/Margin/VBox/TitleBar/CloseBtn
+onready var tab_ear = $PanelTabEar
 
 var fps_values = [30, 60, 90, 120, 0] # 0 represents unlimited
 
@@ -19,12 +20,19 @@ var drag_offset = Vector2.ZERO
 func _ready():
 	save_btn.connect("pressed", self, "_on_save_pressed")
 	cancel_btn.connect("pressed", self, "_on_cancel_pressed")
-	close_btn.connect("pressed", self, "_on_cancel_pressed")
 	
 	$Panel/Margin/VBox/TitleBar.connect("gui_input", self, "_on_titlebar_gui_input")
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	
+	if tab_ear:
+		tab_ear.tab_id = "settings"
+		tab_ear.icon_text = "⚙️"
+		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
+
 	setup_ui()
+
+func _on_tab_ear_clicked(tab_id: String):
+	emit_signal("tab_clicked", tab_id)
 
 func _on_titlebar_gui_input(event):
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
@@ -94,10 +102,20 @@ func _on_save_pressed():
 	
 	# Apply immediately
 	emit_signal("settings_applied")
-	visible = false
+	_close_panel()
 
 func _on_cancel_pressed():
-	visible = false
+	_close_panel()
+
+func _close_panel():
+	var main = get_parent()
+	if main and main.has_method("toggle_drawer_panel"):
+		main.call("toggle_drawer_panel", "settings")
 
 func get_panel_rect() -> Rect2:
 	return $Panel.get_global_rect()
+
+func get_tab_rect() -> Rect2:
+	if is_instance_valid(tab_ear):
+		return tab_ear.get_tab_rect()
+	return Rect2()

@@ -11,6 +11,12 @@ export(float) var wellness = 100.0
 export(float) var toilet = 0.0
 export(float) var elemental_energy = 0.0 # 0 to 100 meter for elemental power
 
+# Learning stats (0.0 to 1.0 confidence)
+export(float) var knows_dispenser = 0.0
+export(float) var knows_food_button = 0.0
+export(float) var knows_toy_button = 0.0
+export(float) var knows_inventory = 0.0
+
 export(float) var hunger_decay_rate = 0.028   # ~1 hour to decay completely (slow)
 export(float) var boredom_decay_rate = 0.15   # ~11 mins to decay (active)
 export(float) var energy_decay_rate = 0.12    # ~13 mins to decay (active)
@@ -23,11 +29,12 @@ export(float) var elemental_energy_fill_rate = 0.35 # ~4.5 minutes to fill 0 -> 
 # Global speed multiplier — scale all decays. 1.0 = normal, 0.5 = half speed
 export(float) var decay_multiplier = 1.0
 
-func decay(delta: float):
+func decay(delta: float, is_moving: bool = false):
 	var d = delta * decay_multiplier * Settings.decay_rate_scale
+	var current_energy_rate = energy_decay_rate * (2.5 if is_moving else 1.0)
 	hunger = clamp(hunger - hunger_decay_rate * d, 0.0, 100.0)
 	boredom = clamp(boredom - boredom_decay_rate * d, 0.0, 100.0)
-	energy = clamp(energy - energy_decay_rate * d, 0.0, 100.0)
+	energy = clamp(energy - current_energy_rate * d, 0.0, 100.0)
 	affection = clamp(affection - affection_decay_rate * d, 0.0, 100.0)
 	curiosity = clamp(curiosity - curiosity_decay_rate * d, 0.0, 100.0)
 	agitation = clamp(agitation - agitation_decay_rate * d, 0.0, 100.0)

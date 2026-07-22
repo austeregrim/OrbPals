@@ -3,6 +3,7 @@ extends Control
 signal drive_changed(drive_name, value)
 signal decay_toggled(decay_enabled)
 signal decay_multiplier_changed(value)
+signal tab_clicked(tab_id)
 
 var pet_ref = null
 
@@ -33,7 +34,7 @@ onready var wellness_label = $Panel/Margin/VBox/WellnessSection/Label
 onready var speed_slider = $Panel/Margin/VBox/SpeedSection/Slider
 onready var speed_label = $Panel/Margin/VBox/SpeedSection/Label
 
-onready var close_btn = $Panel/Margin/VBox/TitleBar/CloseBtn
+onready var tab_ear = $PanelTabEar
 
 var is_dragging = false
 var drag_offset = Vector2.ZERO
@@ -41,7 +42,14 @@ var drag_offset = Vector2.ZERO
 func _ready():
 	$Panel/Margin/VBox/TitleBar.connect("gui_input", self, "_on_titlebar_gui_input")
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	close_btn.connect("pressed", self, "_on_close_pressed")
+
+	if tab_ear:
+		tab_ear.tab_id = "debug"
+		tab_ear.icon_text = "🐛"
+		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
+
+func _on_tab_ear_clicked(tab_id: String):
+	emit_signal("tab_clicked", tab_id)
 	
 	hunger_slider.connect("value_changed", self, "_on_slider_value_changed", ["hunger"])
 	boredom_slider.connect("value_changed", self, "_on_slider_value_changed", ["boredom"])
@@ -84,12 +92,6 @@ func _process(_delta):
 		if main and ("active_pets" in main) and main.active_pets.size() > 0:
 			if not is_instance_valid(pet_ref) or not (pet_ref in main.active_pets):
 				pet_ref = main.active_pets[0]
-			if is_instance_valid(pet_ref) and pet_ref.stats:
-				update_ui_from_stats()
-
-func _on_close_pressed():
-	visible = false
-
 func setup(pet):
 	pet_ref = pet
 	if is_instance_valid(pet_ref) and pet_ref.stats:
@@ -130,3 +132,8 @@ func _on_speed_changed(val):
 
 func get_panel_rect() -> Rect2:
 	return $Panel.get_global_rect()
+
+func get_tab_rect() -> Rect2:
+	if is_instance_valid(tab_ear):
+		return tab_ear.get_tab_rect()
+	return Rect2()

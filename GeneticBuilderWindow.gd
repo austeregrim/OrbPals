@@ -1,12 +1,13 @@
 extends Control
 
 signal pet_hatched(pet_data)
+signal tab_clicked(tab_id)
 
-onready var close_btn = $Panel/Margin/VBox/TitleBar/CloseBtn
 onready var fragment_select_option = $Panel/Margin/VBox/Controls/FragOption
 onready var add_frag_btn = $Panel/Margin/VBox/Controls/AddBtn
 onready var remove_frag_btn = $Panel/Margin/VBox/Controls/RemoveBtn
 onready var clear_strand_btn = $Panel/Margin/VBox/Controls/ClearBtn
+onready var tab_ear = $PanelTabEar
 
 onready var strand_list = $Panel/Margin/VBox/StrandList
 onready var seed_label = $Panel/Margin/VBox/SeedInfo/SeedLabel
@@ -26,7 +27,6 @@ var body_strains = ["blob", "slinky", "aquatic", "alien"]
 var dna_strand = [] # Array of fragment_type strings
 
 func _ready():
-	close_btn.connect("pressed", self, "_on_close_pressed")
 	add_frag_btn.connect("pressed", self, "_on_add_frag_pressed")
 	remove_frag_btn.connect("pressed", self, "_on_remove_frag_pressed")
 	clear_strand_btn.connect("pressed", self, "_on_clear_strand_pressed")
@@ -39,7 +39,15 @@ func _ready():
 	for f in fragment_types:
 		fragment_select_option.add_item(f.replace("_", " ").capitalize())
 		
+	if tab_ear:
+		tab_ear.tab_id = "genetics"
+		tab_ear.icon_text = "🥚"
+		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
+
 	refresh_strand_ui()
+
+func _on_tab_ear_clicked(tab_id: String):
+	emit_signal("tab_clicked", tab_id)
 
 func _on_titlebar_gui_input(event):
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
@@ -199,10 +207,17 @@ func _on_hatch_pressed():
 		
 	emit_signal("pet_hatched", pet_data)
 	dna_strand.clear()
-	visible = false
+	_close_panel()
 
-func _on_close_pressed():
-	visible = false
+func _close_panel():
+	var main = get_parent()
+	if main and main.has_method("toggle_drawer_panel"):
+		main.call("toggle_drawer_panel", "genetics")
 
 func get_panel_rect() -> Rect2:
 	return $Panel.get_global_rect()
+
+func get_tab_rect() -> Rect2:
+	if is_instance_valid(tab_ear):
+		return tab_ear.get_tab_rect()
+	return Rect2()
