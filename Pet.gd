@@ -398,61 +398,35 @@ func _physics_process(delta):
 		
 	if segment_positions.size() > 0:
 		segment_positions[0] = global_position
-		if active_breed.breed_name == "Slinky" and segment_positions.size() >= 3:
-			# Horizontal quadruped spine for Slinky
-			var target_chest = global_position + Vector2(-facing_dir * active_breed.segment_spacing, 4.0)
-			var target_hips = segment_positions[1] + Vector2(-facing_dir * active_breed.segment_spacing, 0.0)
+		for i in range(1, segment_positions.size()):
+			var p_target = segment_positions[i - 1]
+			var diff = p_target - segment_positions[i]
+			var dist = diff.length()
 			
-			segment_positions[1] = lerp(segment_positions[1], target_chest, 0.35)
-			segment_positions[2] = lerp(segment_positions[2], target_hips, 0.35)
+			var spacing = active_breed.segment_spacing
+			var max_dist = spacing * 1.25
+			var min_dist = spacing * 0.75
 			
-			# Enforce max distance constraints to prevent body from falling apart
-			var max_dist = active_breed.segment_spacing * 1.3
-			for i in range(1, 3):
-				var p_target = segment_positions[i-1]
-				var p_diff = segment_positions[i] - p_target
-				var p_dist = p_diff.length()
-				if p_dist > max_dist and p_dist > 0.001:
-					segment_positions[i] = p_target + (p_diff / p_dist) * max_dist
-				segment_positions[i].x = clamp(segment_positions[i].x, 0.0, bounds.end.x)
-				segment_positions[i].y = clamp(segment_positions[i].y, 0.0, current_floor_y)
-		else:
-			# Default trailing tail / caterpillar follow — with max-distance constraint
-			for i in range(1, segment_positions.size()):
-				var target = segment_positions[i-1]
-				var diff = segment_positions[i] - target
-				var dist = diff.length()
+			# If segment has fallen too far behind (e.g. initial emergence or sharp turn), pull it immediately to spacing
+			if dist > max_dist or dist < 0.001:
+				var pull_dir = diff.normalized() if dist > 0.001 else Vector2(-facing_dir, 0.0)
+				segment_positions[i] = p_target - pull_dir * spacing
+			else:
+				# Smooth organic trailing towards target segment
+				var desired_pos = p_target - diff.normalized() * spacing
+				segment_positions[i] = lerp(segment_positions[i], desired_pos, 0.4)
 				
-				var dir = Vector2.DOWN  # default fallback
-				if dist > 0.001:
-					dir = diff / dist
-				
-				# Max distance constraint: segment can't be further than spacing*1.3
-				var max_dist = active_breed.segment_spacing * 1.3
-				if dist > max_dist:
-					segment_positions[i] = target + dir * max_dist
-					dist = max_dist
+				# Strict distance clamping relative to target segment
+				var new_diff = p_target - segment_positions[i]
+				var new_dist = new_diff.length()
+				if new_dist > max_dist and new_dist > 0.001:
+					segment_positions[i] = p_target - new_diff.normalized() * max_dist
+				elif new_dist < min_dist and new_dist > 0.001:
+					segment_positions[i] = p_target - new_diff.normalized() * min_dist
 
-				var movement_dir = dir
-				var perp = Vector2(-movement_dir.y, movement_dir.x)
-				
-				var max_wobble = active_breed.segment_spacing * 0.4
-				var speed_factor = clamp(center_vel.length() / 80.0, 0.1, 1.5)
-				if current_state == State.SLEEPING:
-					speed_factor = 0.0
-					
-				var wobble_phase = OS.get_ticks_msec() * 0.001 * active_breed.wobble_speed - i * 0.8
-				var raw_wobble = sin(wobble_phase) * active_breed.wobble_amplitude * speed_factor
-				var wobble = clamp(raw_wobble, -max_wobble, max_wobble)
-				
-				# Scale wobble down when segment is near max distance
-				wobble *= clamp(1.0 - dist / max_dist, 0.0, 1.0)
-				
-				segment_positions[i] = target + dir * active_breed.segment_spacing + perp * wobble
-				
-				# Keep segments within boundaries
-				segment_positions[i].x = clamp(segment_positions[i].x, 0.0, bounds.end.x)
-				segment_positions[i].y = clamp(segment_positions[i].y, 0.0, current_floor_y)
+			# Keep within screen bounds
+			segment_positions[i].x = clamp(segment_positions[i].x, bounds.position.x + 5.0, bounds.end.x - 5.0)
+			segment_positions[i].y = clamp(segment_positions[i].y, bounds.position.y + 5.0, current_floor_y)
 				
 	# 5.7 Simulate procedural step-locking for limbs
 	if active_breed.has_limbs and foot_positions.size() == active_breed.num_limbs:
@@ -884,6 +858,8 @@ func _evaluate_states(delta):
 func _change_state(new_state: int):
 	current_state = new_state
 	state_timer = 0.0
+	if new_state != State.EMERGING_FROM_DISPENSER and new_state != State.RETURNING_TO_DISPENSER:
+		transition_scale = 1.0
 	
 	# State initialization actions
 	match new_state:
@@ -1072,14 +1048,15 @@ func _update_state_behavior(delta):
 		State.EMERGING_FROM_DISPENSER:
 			# Drop down from nozzle
 			center_vel.y += gravity * delta
-			# Walk wiggles and scale up
-			transition_scale = lerp(transition_scale, 1.0, 0.05)
+			# Scale up smoothly
+			transition_scale = lerp(transition_scale, 1.0, 0.12)
 			
 			# Floor bounce/landing
 			var bounds = _get_viewport_bounds()
 			var floor_y = bounds.end.y - base_radius
-			if global_position.y >= floor_y:
-				global_position.y = floor_y
+			if global_position.y >= floor_y or state_timer > 1.5:
+				if global_position.y >= floor_y:
+					global_position.y = floor_y
 				center_vel = Vector2.ZERO
 				transition_scale = 1.0
 				_change_state(State.IDLE)
@@ -1541,6 +1518,20 @@ func _draw():
 			var r = active_breed.head_radius * scale
 			draw_circle(local_pos + Vector2(3, shadow_y_offset + 5), r * 0.7 * sh_scale, Color(0, 0, 0, 0.12 * sh_opacity))
 
+		# Draw connecting body capsules between adjacent segments first
+		for i in range(segment_positions.size() - 1, 0, -1):
+			var pos_a = segment_positions[i] - global_position
+			var pos_b = segment_positions[i - 1] - global_position
+			var scale_a = active_breed.segment_scales[i] if i < active_breed.segment_scales.size() else 0.5
+			var scale_b = active_breed.segment_scales[i - 1] if i - 1 < active_breed.segment_scales.size() else 0.5
+			var r_avg = active_breed.head_radius * (scale_a + scale_b) * 0.5
+			
+			var t = float(i) / float(active_breed.num_segments)
+			var seg_col = p_col.linear_interpolate(s_col, t)
+			
+			draw_line(pos_a, pos_b, outline_color, (r_avg + 2.5) * 2.0)
+			draw_line(pos_a, pos_b, seg_col, r_avg * 2.0)
+
 		for i in range(segment_positions.size() - 1, 0, -1):
 			var seg_pos = segment_positions[i]
 			var local_pos = seg_pos - global_position
@@ -1887,11 +1878,16 @@ func return_to_dispenser(nozzle_pos: Vector2, breed_res):
 	_change_state(State.RETURNING_TO_DISPENSER)
 
 func emerge_from_dispenser(nozzle_pos: Vector2):
+	transition_nozzle_pos = nozzle_pos
 	global_position = nozzle_pos
 	for i in range(point_positions.size()):
 		point_positions[i] = nozzle_pos + (target_relative_offsets[i] if i < target_relative_offsets.size() else Vector2.ZERO) * 0.2
 	for i in range(segment_positions.size()):
 		segment_positions[i] = nozzle_pos
+	for i in range(foot_positions.size()):
+		foot_positions[i] = nozzle_pos
+		if i < foot_step_start.size(): foot_step_start[i] = nozzle_pos
+		if i < foot_step_target.size(): foot_step_target[i] = nozzle_pos
 	center_vel = Vector2(rand_range(-60, 60), 280.0)
 	transition_scale = 0.2
 	_change_state(State.EMERGING_FROM_DISPENSER)
@@ -2232,11 +2228,13 @@ func on_glass_tapped(tap_pos: Vector2):
 	_show_learning_emote("👀")
 
 func walk_to_tap_location(tap_pos: Vector2, try_dig: bool = true):
-	if current_state == State.SLEEPING or current_state == State.SICK or current_state == State.RETURNING_TO_DISPENSER:
+	if current_state == State.SLEEPING or current_state == State.SICK or current_state == State.RETURNING_TO_DISPENSER or current_state == State.EMERGING_FROM_DISPENSER:
 		return
 	target_wander_pos = tap_pos
-	will_dig_on_arrival = try_dig and (randf() < 0.50)
-	_change_state(State.WANDER)
+	if try_dig:
+		will_dig_on_arrival = (randf() < 0.50)
+	if current_state != State.WANDER:
+		_change_state(State.WANDER)
 
 func _check_food_competition_and_eat():
 	var other_pet = _find_closest_other_pet()

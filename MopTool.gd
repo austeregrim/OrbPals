@@ -18,7 +18,7 @@ func _ready():
 
 func _physics_process(delta):
 	if is_dragging:
-		var mouse_pos = get_global_mouse_position()
+		var mouse_pos = prev_mouse_pos if prev_mouse_pos != Vector2.ZERO else get_global_mouse_position()
 		global_position = mouse_pos
 		velocity = Vector2.ZERO
 		
@@ -28,8 +28,6 @@ func _physics_process(delta):
 		drag_positions.append(mouse_pos)
 		if drag_positions.size() > 5:
 			drag_positions.remove(0)
-			
-		prev_mouse_pos = mouse_pos
 	else:
 		velocity.y += gravity * delta
 		global_position += velocity * delta
@@ -76,37 +74,55 @@ func _clean_messes_in_radius():
 			item.queue_free()
 
 func _input(event):
+	var touch_pos = Vector2.ZERO
+	var is_press = false
+	var is_release = false
+	var is_right_click = false
+
 	if event is InputEventMouseButton:
-		if event.pressed:
-			var grab_radius = radius * 1.8
-			var dist = event.global_position.distance_to(global_position)
-			if dist <= grab_radius:
-				if event.button_index == BUTTON_RIGHT:
-					var menu = ContextMenuScene.instance()
-					get_parent().add_child(menu)
-					menu.call("setup", self)
-					get_tree().set_input_as_handled()
-				elif event.button_index == BUTTON_LEFT:
-					is_dragging = true
-					drag_positions.clear()
-					drag_positions.append(event.global_position)
-					prev_mouse_pos = event.global_position
-					get_tree().set_input_as_handled()
-		else:
-			if event.button_index == BUTTON_LEFT and is_dragging:
-				is_dragging = false
-				var main = get_parent()
-				if main and main.has_method("is_over_trash_can") and main.call("is_over_trash_can", global_position):
-					if main.has_method("remove_item"):
-						main.call("remove_item", self)
-					get_tree().set_input_as_handled()
-					return
-				if drag_positions.size() > 1:
-					var start_pos = drag_positions[0]
-					var end_pos = drag_positions[drag_positions.size() - 1]
-					velocity = (end_pos - start_pos) / (0.016 * drag_positions.size())
-					velocity = velocity.clamped(600.0)
+		touch_pos = event.global_position
+		is_press = event.pressed
+		is_release = not event.pressed
+		is_right_click = (event.button_index == BUTTON_RIGHT)
+	elif event is InputEventScreenTouch:
+		touch_pos = event.position
+		is_press = event.pressed
+		is_release = not event.pressed
+	elif event is InputEventScreenDrag and is_dragging:
+		touch_pos = event.position
+		drag_positions.append(touch_pos)
+		prev_mouse_pos = touch_pos
+		return
+
+	if is_press:
+		var grab_radius = radius * 1.8
+		var dist = touch_pos.distance_to(global_position)
+		if dist <= grab_radius:
+			if is_right_click:
+				var menu = ContextMenuScene.instance()
+				get_parent().add_child(menu)
+				menu.call("setup", self)
 				get_tree().set_input_as_handled()
+			else:
+				is_dragging = true
+				drag_positions.clear()
+				drag_positions.append(touch_pos)
+				prev_mouse_pos = touch_pos
+				get_tree().set_input_as_handled()
+	elif is_release and is_dragging:
+		is_dragging = false
+		var main = get_parent()
+		if main and main.has_method("is_over_trash_can") and main.call("is_over_trash_can", global_position):
+			if main.has_method("remove_item"):
+				main.call("remove_item", self)
+			get_tree().set_input_as_handled()
+			return
+		if drag_positions.size() > 1:
+			var start_pos = drag_positions[0]
+			var end_pos = drag_positions[drag_positions.size() - 1]
+			velocity = (end_pos - start_pos) / (0.016 * drag_positions.size())
+			velocity = velocity.clamped(600.0)
+		get_tree().set_input_as_handled()
 
 func get_click_polygon() -> PoolVector2Array:
 	var poly = PoolVector2Array()

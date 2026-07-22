@@ -18,6 +18,8 @@ onready var window_detection_check = $Panel/Margin/VBox/WindowObstaclesRow/Windo
 onready var old_age_death_row = $Panel/Margin/VBox/OldAgeDeathRow
 onready var old_age_death_check = $Panel/Margin/VBox/OldAgeDeathRow/OldAgeDeathCheck
 
+onready var theme_color_picker = $Panel/Margin/VBox/ThemeColorRow/ThemeColorPicker
+
 onready var save_btn = $Panel/Margin/VBox/BtnRow/SaveBtn
 onready var cancel_btn = $Panel/Margin/VBox/BtnRow/CancelBtn
 onready var tab_ear = $PanelTabEar
@@ -31,6 +33,9 @@ var title_tap_count = 0
 func _ready():
 	save_btn.connect("pressed", self, "_on_save_pressed")
 	cancel_btn.connect("pressed", self, "_on_cancel_pressed")
+	
+	if theme_color_picker:
+		theme_color_picker.connect("color_changed", self, "_on_theme_color_changed")
 	
 	$Panel/Margin/VBox/TitleBar.connect("gui_input", self, "_on_titlebar_gui_input")
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -120,6 +125,14 @@ func setup_ui():
 	# 5. Old Age Death Check
 	if old_age_death_check:
 		old_age_death_check.pressed = Settings.pet_mortality_enabled
+		
+	# 6. Theme Color
+	if theme_color_picker:
+		theme_color_picker.color = Settings.theme_color
+
+func _on_theme_color_changed(color: Color):
+	Settings.theme_color = color
+	Settings.emit_signal("theme_color_changed", color)
 
 func _on_save_pressed():
 	# Update Settings values

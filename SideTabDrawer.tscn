@@ -1,11 +1,17 @@
-[gd_scene load_steps=2 format=2]
+[gd_scene load_steps=8 format=2]
 
 [ext_resource path="res://SideTabDrawer.gd" type="Script" id=1]
+[ext_resource path="res://assets/dispenser_icon.png" type="Texture" id=2]
+[ext_resource path="res://assets/genetics_icon.png" type="Texture" id=3]
+[ext_resource path="res://assets/inventory_icon.png" type="Texture" id=4]
+[ext_resource path="res://assets/settings_icon.png" type="Texture" id=5]
+[ext_resource path="res://assets/debug_icon.png" type="Texture" id=6]
+[ext_resource path="res://assets/needs_icon.png" type="Texture" id=7]
 
 [node name="SideTabDrawer" type="Control"]
 margin_right = 54.0
-margin_bottom = 240.0
-rect_min_size = Vector2( 54, 240 )
+margin_bottom = 282.0
+rect_min_size = Vector2( 54, 282 )
 script = ExtResource( 1 )
 
 [node name="VBox" type="VBoxContainer" parent="."]
@@ -18,36 +24,86 @@ margin_right = 54.0
 margin_bottom = 42.0
 rect_min_size = Vector2( 54, 42 )
 hint_tooltip = "Dispenser Panel"
-text = "🚰"
 
-[node name="GeneticsTab" type="Button" parent="VBox"]
+[node name="Icon" type="TextureRect" parent="VBox/DispenserTab"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource( 2 )
+expand = true
+stretch_mode = 6
+
+[node name="NeedsTab" type="Button" parent="VBox"]
 margin_top = 48.0
 margin_right = 54.0
 margin_bottom = 90.0
 rect_min_size = Vector2( 54, 42 )
-hint_tooltip = "Genetics Builder"
-text = "🥚"
+hint_tooltip = "Pet Needs & Stats"
 
-[node name="InventoryTab" type="Button" parent="VBox"]
+[node name="Icon" type="TextureRect" parent="VBox/NeedsTab"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource( 7 )
+expand = true
+stretch_mode = 6
+
+[node name="GeneticsTab" type="Button" parent="VBox"]
 margin_top = 96.0
 margin_right = 54.0
 margin_bottom = 138.0
 rect_min_size = Vector2( 54, 42 )
-hint_tooltip = "Inventory"
-text = "📦"
+hint_tooltip = "Genetics Builder"
 
-[node name="SettingsTab" type="Button" parent="VBox"]
+[node name="Icon" type="TextureRect" parent="VBox/GeneticsTab"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource( 3 )
+expand = true
+stretch_mode = 6
+
+[node name="InventoryTab" type="Button" parent="VBox"]
 margin_top = 144.0
 margin_right = 54.0
 margin_bottom = 186.0
 rect_min_size = Vector2( 54, 42 )
-hint_tooltip = "Settings"
-text = "⚙️"
+hint_tooltip = "Inventory"
 
-[node name="DebugTab" type="Button" parent="VBox"]
+[node name="Icon" type="TextureRect" parent="VBox/InventoryTab"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource( 4 )
+expand = true
+stretch_mode = 6
+
+[node name="SettingsTab" type="Button" parent="VBox"]
 margin_top = 192.0
 margin_right = 54.0
 margin_bottom = 234.0
 rect_min_size = Vector2( 54, 42 )
+hint_tooltip = "Settings"
+
+[node name="Icon" type="TextureRect" parent="VBox/SettingsTab"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource( 5 )
+expand = true
+stretch_mode = 6
+
+[node name="DebugTab" type="Button" parent="VBox"]
+margin_top = 240.0
+margin_right = 54.0
+margin_bottom = 282.0
+rect_min_size = Vector2( 54, 42 )
 hint_tooltip = "Debug Panel"
-text = "🐛"
+
+[node name="Icon" type="TextureRect" parent="VBox/DebugTab"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource( 6 )
+expand = true
+stretch_mode = 6

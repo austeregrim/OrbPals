@@ -75,6 +75,9 @@ func _ready():
 	# Spawn TrashCan
 	trash_can = TrashCanScene.instance()
 	add_child(trash_can)
+	
+	if Settings.has_signal("theme_color_changed"):
+		Settings.connect("theme_color_changed", self, "_on_theme_color_changed")
 
 func _notification(what):
 	if what == NOTIFICATION_WM_QUIT_REQUEST or what == NOTIFICATION_WM_GO_BACK_REQUEST or what == MainLoop.NOTIFICATION_APP_PAUSED or what == NOTIFICATION_WM_FOCUS_OUT:
@@ -349,6 +352,9 @@ func toggle_debug_panel():
 
 func _process(delta):
 	# Handle long-press pointer walking (only if no pets/items are currently being dragged)
+	if is_pointer_holding and not Input.is_mouse_button_pressed(BUTTON_LEFT):
+		is_pointer_holding = false
+
 	if is_pointer_holding:
 		var any_dragging = false
 		for p in active_pets:
@@ -364,7 +370,7 @@ func _process(delta):
 		if not any_dragging:
 			var hold_dur = (OS.get_ticks_msec() * 0.001) - pointer_hold_start_time
 			if hold_dur > 0.35:
-				var target_pos = get_global_mouse_position()
+				var target_pos = pointer_hold_pos if pointer_hold_pos != Vector2.ZERO else get_global_mouse_position()
 				for p in active_pets:
 					if is_instance_valid(p) and p.has_method("walk_to_tap_location") and not p.is_dragging:
 						p.call("walk_to_tap_location", target_pos, false)
@@ -520,6 +526,9 @@ func apply_window_settings():
 	update_playpen_bg()
 	call_deferred("_reposition_all_side_panels", false)
 
+func _on_theme_color_changed(_color: Color):
+	update_playpen_bg()
+
 func update_playpen_bg():
 	if Settings.play_pen_mode or OS.get_name() == "Android":
 		OS.set_window_mouse_passthrough(PoolVector2Array())
@@ -528,20 +537,33 @@ func update_playpen_bg():
 		if not playpen_bg:
 			playpen_bg = Panel.new()
 			playpen_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			var style = StyleBoxFlat.new()
-			style.bg_color = Color("1e1e2e")
-			style.border_width_left = 6
-			style.border_width_top = 6
-			style.border_width_right = 6
-			style.border_width_bottom = 6
-			style.border_color = Color("45475a")
-			style.corner_radius_top_left = 4
-			style.corner_radius_top_right = 4
-			style.corner_radius_bottom_right = 4
-			style.corner_radius_bottom_left = 4
-			playpen_bg.add_stylebox_override("panel", style)
 			add_child(playpen_bg)
 			move_child(playpen_bg, 0)
+			
+		var safe_theme = Settings.get_safe_theme_color(Settings.theme_color)
+		var bg_col = safe_theme.darkened(0.80)
+		bg_col.r = max(bg_col.r, 0.08)
+		bg_col.g = max(bg_col.g, 0.08)
+		bg_col.b = max(bg_col.b, 0.12)
+		
+		var border_col = safe_theme
+		var border_lum = border_col.r * 0.299 + border_col.g * 0.587 + border_col.b * 0.114
+		if border_lum < 0.35:
+			border_col = border_col.lightened(0.35)
+
+		var style = StyleBoxFlat.new()
+		style.bg_color = bg_col
+		style.border_width_left = 6
+		style.border_width_top = 6
+		style.border_width_right = 6
+		style.border_width_bottom = 6
+		style.border_color = border_col
+		style.corner_radius_top_left = 4
+		style.corner_radius_top_right = 4
+		style.corner_radius_bottom_right = 4
+		style.corner_radius_bottom_left = 4
+		playpen_bg.add_stylebox_override("panel", style)
+
 		playpen_bg.rect_position = Vector2.ZERO
 		playpen_bg.rect_size = vp_size
 		playpen_bg.visible = true

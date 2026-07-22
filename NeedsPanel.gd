@@ -27,6 +27,8 @@ func _ready():
 		tab_ear.tab_id = "needs"
 		tab_ear.icon_text = "🐾"
 		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
+		if tab_ear.has_method("_update_icon_and_text"):
+			tab_ear.call("_update_icon_and_text")
 
 func _on_tab_ear_clicked(tab_id: String):
 	emit_signal("tab_clicked", tab_id)

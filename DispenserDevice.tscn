@@ -43,11 +43,18 @@ rect_min_size = Vector2( 0, 28 )
 
 [node name="TitleLabel" type="Label" parent="Panel/Margin/VBox/TitleBar"]
 margin_top = 7.0
-margin_right = 282.0
+margin_right = 200.0
 margin_bottom = 21.0
 size_flags_horizontal = 3
 text = "🚰 Pet Dispenser"
 valign = 1
+
+[node name="ExitBtn" type="Button" parent="Panel/Margin/VBox/TitleBar"]
+margin_left = 204.0
+margin_right = 310.0
+margin_bottom = 28.0
+custom_colors/font_color = Color( 1, 0.4, 0.4, 1 )
+text = "Exit Game"
 
 [node name="ItemRow" type="HBoxContainer" parent="Panel/Margin/VBox"]
 margin_top = 36.0
@@ -145,21 +152,6 @@ margin_bottom = 28.0
 size_flags_horizontal = 3
 custom_colors/font_color = Color( 1, 0.3, 0.3, 1 )
 text = "🚀 Launch into Void (Euthanize)"
-
-[node name="ControlRow" type="HBoxContainer" parent="Panel/Margin/VBox"]
-margin_top = 186.0
-margin_right = 310.0
-margin_bottom = 216.0
-rect_min_size = Vector2( 0, 30 )
-alignment = 1
-
-[node name="ExitBtn" type="Button" parent="Panel/Margin/VBox/ControlRow"]
-margin_left = 95.0
-margin_right = 215.0
-margin_bottom = 30.0
-rect_min_size = Vector2( 120, 30 )
-custom_colors/font_color = Color( 1, 0.4, 0.4, 1 )
-text = "Exit Game"
 
 [node name="ConfirmationDialog" type="ConfirmationDialog" parent="."]
 margin_right = 260.0

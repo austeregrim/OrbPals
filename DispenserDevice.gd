@@ -13,7 +13,7 @@ onready var food_btn = $Panel/Margin/VBox/ItemRow/FoodBtn
 onready var cookie_btn = $Panel/Margin/VBox/ItemRow/CookieBtn
 onready var ball_btn = $Panel/Margin/VBox/ItemRow/BallBtn
 onready var mop_btn = $Panel/Margin/VBox/ItemRow/MopBtn
-onready var exit_btn = $Panel/Margin/VBox/ControlRow/ExitBtn
+onready var exit_btn = $Panel/Margin/VBox/TitleBar/ExitBtn
 
 onready var breed_dropdown = $Panel/Margin/VBox/BreedRow/BreedDropdown
 onready var summon_btn = $Panel/Margin/VBox/PetActionRow/SummonBtn
@@ -34,7 +34,8 @@ func _ready():
 	cookie_btn.connect("pressed", self, "_on_cookie_pressed")
 	ball_btn.connect("pressed", self, "_on_ball_pressed")
 	mop_btn.connect("pressed", self, "_on_mop_pressed")
-	exit_btn.connect("pressed", self, "_on_exit_pressed")
+	if exit_btn:
+		exit_btn.connect("pressed", self, "_on_exit_pressed")
 	
 	summon_btn.connect("pressed", self, "_on_summon_pressed")
 	recall_btn.connect("pressed", self, "_on_recall_pressed")
@@ -116,8 +117,18 @@ func _on_exit_pressed():
 	get_tree().quit()
 
 func get_nozzle_global_position() -> Vector2:
+	# If drawer panel is open and visible on screen, use bottom of panel
 	var r = $Panel.get_global_rect()
-	return r.position + Vector2(r.size.x / 2.0, r.size.y + 10.0)
+	if $Panel.visible and r.size.x > 10 and r.position.x >= -50 and r.position.x <= OS.window_size.x:
+		return r.position + Vector2(r.size.x / 2.0, r.size.y + 10.0)
+		
+	# Fallback: emerge directly from the side tab ear
+	if is_instance_valid(tab_ear):
+		var tab_r = tab_ear.get_tab_rect()
+		if tab_r.size.x > 0:
+			return tab_r.position + Vector2(tab_r.size.x / 2.0, tab_r.size.y / 2.0)
+			
+	return Vector2(clamp(r.position.x + 165.0, 40.0, OS.window_size.x - 40.0), 100.0)
 
 func get_panel_rect() -> Rect2:
 	return $Panel.get_global_rect()
