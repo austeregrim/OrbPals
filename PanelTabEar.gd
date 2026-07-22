@@ -11,8 +11,19 @@ onready var btn = $Button
 func _ready():
 	if btn:
 		btn.text = icon_text
+		btn.hint_tooltip = _get_tooltip_text(tab_id)
 		btn.connect("pressed", self, "_on_button_pressed")
 		_apply_custom_style(false)
+
+func _get_tooltip_text(id: String) -> String:
+	match id:
+		"dispenser": return "Care & Pet Dispenser"
+		"needs": return "Pet Needs & Stats"
+		"genetics": return "Hatchery & Genetics"
+		"inventory": return "Inventory & Items"
+		"settings": return "Settings"
+		"debug": return "Debug Controls"
+		_: return id.capitalize()
 
 func _on_button_pressed():
 	emit_signal("tab_clicked", tab_id)

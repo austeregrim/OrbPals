@@ -9,6 +9,7 @@ var window_detection: bool = true
 var pet_aging_enabled: bool = true
 var pet_mortality_enabled: bool = true
 var decay_rate_scale: float = 1.0
+var debug_unlocked: bool = false
 
 const SAVE_PATH = "user://settings.cfg"
 
@@ -16,6 +17,7 @@ func _ready():
 	load_settings()
 
 func load_settings():
+	debug_unlocked = false # Always start hidden on application launch
 	var config = ConfigFile.new()
 	var err = config.load(SAVE_PATH)
 	if err == OK:
@@ -38,6 +40,7 @@ func save_settings():
 	config.set_value("settings", "pet_aging_enabled", pet_aging_enabled)
 	config.set_value("settings", "pet_mortality_enabled", pet_mortality_enabled)
 	config.set_value("settings", "decay_rate_scale", decay_rate_scale)
+	config.set_value("settings", "debug_unlocked", false)
 	var err = config.save(SAVE_PATH)
 	if err != OK:
 		print("Error saving settings: ", err)

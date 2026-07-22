@@ -4,6 +4,7 @@
 [ext_resource path="res://PanelTabEar.tscn" type="PackedScene" id=2]
 
 [node name="DebugPanel" type="Control"]
+visible = false
 margin_right = 300.0
 margin_bottom = 620.0
 rect_min_size = Vector2( 300, 620 )

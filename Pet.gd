@@ -318,6 +318,25 @@ func _physics_process(delta):
 				# Friction on floor
 				center_vel.x *= 0.8
 			
+		# Pet-to-Pet collision avoidance (prevent clipping unless mating)
+		var is_mating = (current_state == State.EATING or current_state == State.SLEEPING) # Placeholder until full mating state is active
+		if not is_mating and main and ("active_pets" in main):
+			for other in main.active_pets:
+				if is_instance_valid(other) and other != self:
+					var p_diff = global_position - other.global_position
+					var p_dist = p_diff.length()
+					var min_p_dist = (base_radius + other.base_radius) * 0.95
+					if p_dist < min_p_dist and p_dist > 0.001:
+						var push_dir = p_diff / p_dist
+						var overlap = min_p_dist - p_dist
+						global_position += push_dir * (overlap * 0.5)
+						other.global_position -= push_dir * (overlap * 0.5)
+						# Soft velocity nudge
+						var rel_vel = center_vel - other.center_vel
+						if rel_vel.dot(push_dir) < 0:
+							center_vel += push_dir * 15.0
+							other.center_vel -= push_dir * 15.0
+
 	# 5. Simulate outer points (Spring-Mass System)
 	var current_floor_y = bounds.end.y
 
@@ -381,13 +400,20 @@ func _physics_process(delta):
 		segment_positions[0] = global_position
 		if active_breed.breed_name == "Slinky" and segment_positions.size() >= 3:
 			# Horizontal quadruped spine for Slinky
-			var target_chest = global_position + Vector2(-facing_dir * active_breed.segment_spacing, 8.0)
+			var target_chest = global_position + Vector2(-facing_dir * active_breed.segment_spacing, 4.0)
 			var target_hips = segment_positions[1] + Vector2(-facing_dir * active_breed.segment_spacing, 0.0)
 			
-			segment_positions[1] = lerp(segment_positions[1], target_chest, 0.22)
-			segment_positions[2] = lerp(segment_positions[2], target_hips, 0.22)
+			segment_positions[1] = lerp(segment_positions[1], target_chest, 0.35)
+			segment_positions[2] = lerp(segment_positions[2], target_hips, 0.35)
 			
+			# Enforce max distance constraints to prevent body from falling apart
+			var max_dist = active_breed.segment_spacing * 1.3
 			for i in range(1, 3):
+				var p_target = segment_positions[i-1]
+				var p_diff = segment_positions[i] - p_target
+				var p_dist = p_diff.length()
+				if p_dist > max_dist and p_dist > 0.001:
+					segment_positions[i] = p_target + (p_diff / p_dist) * max_dist
 				segment_positions[i].x = clamp(segment_positions[i].x, 0.0, bounds.end.x)
 				segment_positions[i].y = clamp(segment_positions[i].y, 0.0, current_floor_y)
 		else:
@@ -410,13 +436,16 @@ func _physics_process(delta):
 				var movement_dir = dir
 				var perp = Vector2(-movement_dir.y, movement_dir.x)
 				
+				var max_wobble = active_breed.segment_spacing * 0.4
 				var speed_factor = clamp(center_vel.length() / 80.0, 0.1, 1.5)
 				if current_state == State.SLEEPING:
 					speed_factor = 0.0
 					
 				var wobble_phase = OS.get_ticks_msec() * 0.001 * active_breed.wobble_speed - i * 0.8
-				var wobble = sin(wobble_phase) * active_breed.wobble_amplitude * speed_factor
-				# Scale wobble down when segment is near max distance (prevents spinning)
+				var raw_wobble = sin(wobble_phase) * active_breed.wobble_amplitude * speed_factor
+				var wobble = clamp(raw_wobble, -max_wobble, max_wobble)
+				
+				# Scale wobble down when segment is near max distance
 				wobble *= clamp(1.0 - dist / max_dist, 0.0, 1.0)
 				
 				segment_positions[i] = target + dir * active_breed.segment_spacing + perp * wobble
@@ -507,30 +536,43 @@ func _physics_process(delta):
 	update()
 
 func _input(event):
-	if event is InputEventMouseButton:
-		if event.button_index == BUTTON_LEFT:
-			if event.pressed:
-				# Check if click is inside the pet's current shape
-				var local_click = event.global_position
-				var poly = get_click_polygon()
-				if Geometry.is_point_in_polygon(local_click, poly):
-					is_dragging = true
-					drag_positions.clear()
-					drag_positions.append(local_click)
-					prev_mouse_pos = local_click
-			else:
-				if is_dragging:
-					is_dragging = false
-					prev_mouse_pos = Vector2.ZERO
-					if drag_positions.size() > 1:
-						var start_pos = drag_positions[0]
-						var end_pos = drag_positions[drag_positions.size() - 1]
-						var throw_vector = (end_pos - start_pos) / (0.016 * drag_positions.size())
-						center_vel = throw_vector.clamped(150.0)
-					else:
-						center_vel = Vector2.ZERO
-					is_falling = false
-					_change_state(State.WANDER)
+	var touch_pos = Vector2.ZERO
+	var is_press = false
+	var is_release = false
+
+	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
+		touch_pos = event.global_position
+		is_press = event.pressed
+		is_release = not event.pressed
+	elif event is InputEventScreenTouch:
+		touch_pos = event.position
+		is_press = event.pressed
+		is_release = not event.pressed
+	elif event is InputEventScreenDrag and is_dragging:
+		touch_pos = event.position
+		drag_positions.append(touch_pos)
+		prev_mouse_pos = touch_pos
+		return
+
+	if is_press:
+		var poly = get_click_polygon()
+		if Geometry.is_point_in_polygon(touch_pos, poly):
+			is_dragging = true
+			drag_positions.clear()
+			drag_positions.append(touch_pos)
+			prev_mouse_pos = touch_pos
+	elif is_release and is_dragging:
+		is_dragging = false
+		prev_mouse_pos = Vector2.ZERO
+		if drag_positions.size() > 1:
+			var start_pos = drag_positions[0]
+			var end_pos = drag_positions[drag_positions.size() - 1]
+			var throw_vector = (end_pos - start_pos) / (0.016 * drag_positions.size())
+			center_vel = throw_vector.clamped(150.0)
+		else:
+			center_vel = Vector2.ZERO
+		is_falling = false
+		_change_state(State.WANDER)
 
 func get_click_polygon() -> PoolVector2Array:
 	var polygons = []

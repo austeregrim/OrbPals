@@ -42,6 +42,11 @@ var inventory = {}
 var pet_roster = []
 var saved_pet_states = {}
 
+var is_pointer_holding: bool = false
+var pointer_hold_start_time: float = 0.0
+var pointer_hold_pos: Vector2 = Vector2.ZERO
+var autosave_timer: float = 0.0
+
 func _ready():
 	# Check Android platform
 	if OS.get_name() == "Android":
@@ -62,9 +67,18 @@ func _ready():
 	# Initialize Pet Roster (presets + user://pets/)
 	load_pet_roster()
 
+	# Restore saved active pets or summon default
+	restore_active_pets()
+	if active_pets.size() == 0 and pet_roster.size() > 0:
+		summon_pet(pet_roster[0])
+
 	# Spawn TrashCan
 	trash_can = TrashCanScene.instance()
 	add_child(trash_can)
+
+func _notification(what):
+	if what == NOTIFICATION_WM_QUIT_REQUEST or what == NOTIFICATION_WM_GO_BACK_REQUEST or what == MainLoop.NOTIFICATION_APP_PAUSED or what == NOTIFICATION_WM_FOCUS_OUT:
+		save_active_pets()
 
 func _init_drawer_panels():
 	# 1. Dispenser Device (🚰)
@@ -95,6 +109,8 @@ func _init_drawer_panels():
 	settings_window = SettingsWindowScene.instance()
 	add_child(settings_window)
 	settings_window.connect("settings_applied", self, "apply_window_settings")
+	if settings_window.has_signal("debug_unlocked"):
+		settings_window.connect("debug_unlocked", self, "_on_debug_unlocked")
 
 	# 6. Debug Panel (🐛)
 	debug_panel = DebugPanelScene.instance()
@@ -114,15 +130,17 @@ func _init_drawer_panels():
 		{"id": "debug", "panel": debug_panel}
 	]
 
-	# Connect tab ear signals and make panels visible so tab ears remain visible at all times
+	# Connect tab ear signals
 	for entry in side_panels_order:
 		var p = entry["panel"]
-		if p.has_signal("tab_clicked"):
-			p.connect("tab_clicked", self, "toggle_drawer_panel")
-		p.visible = true
+		if is_instance_valid(p) and p.has_signal("tab_clicked"):
+			if not p.is_connected("tab_clicked", self, "toggle_drawer_panel"):
+				p.connect("tab_clicked", self, "toggle_drawer_panel")
 
-	# Align all panels offscreen initially
 	_reposition_all_side_panels(false)
+
+func _on_debug_unlocked():
+	_reposition_all_side_panels(true)
 
 func _reposition_all_side_panels(animated: bool = false):
 	var vp = get_viewport_rect().size
@@ -144,14 +162,17 @@ func _reposition_all_side_panels(animated: bool = false):
 		var target_x = vp.x - panel.rect_size.x if is_open else vp.x
 		var target_pos = Vector2(target_x, tab_y)
 
-		# Ensure panel itself stays visible so child PanelTabEar remains visible
-		panel.visible = true
+		# Visibility check: Debug panel is only visible if Settings.debug_unlocked is true
+		if tab_id == "debug":
+			panel.visible = Settings.debug_unlocked
+		else:
+			panel.visible = true
 
 		# Update active styling on tab ear
 		if "tab_ear" in panel and is_instance_valid(panel.tab_ear):
 			panel.tab_ear.set_active(is_open)
 
-		if animated:
+		if animated and panel.visible:
 			var t = create_tween()
 			if t:
 				t.tween_property(panel, "rect_global_position", target_pos, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
@@ -161,6 +182,9 @@ func _reposition_all_side_panels(animated: bool = false):
 			panel.rect_global_position = target_pos
 
 func toggle_drawer_panel(tab_name: String):
+	if tab_name == "debug" and not Settings.debug_unlocked:
+		return
+
 	if active_drawer_tab == tab_name:
 		# Close currently open panel
 		active_drawer_tab = ""
@@ -323,7 +347,34 @@ func open_settings():
 func toggle_debug_panel():
 	toggle_drawer_panel("debug")
 
-func _process(_delta):
+func _process(delta):
+	# Handle long-press pointer walking (only if no pets/items are currently being dragged)
+	if is_pointer_holding:
+		var any_dragging = false
+		for p in active_pets:
+			if is_instance_valid(p) and p.is_dragging:
+				any_dragging = true
+				break
+		if not any_dragging:
+			for item in active_items:
+				if is_instance_valid(item) and ("is_dragging" in item) and item.is_dragging:
+					any_dragging = true
+					break
+					
+		if not any_dragging:
+			var hold_dur = (OS.get_ticks_msec() * 0.001) - pointer_hold_start_time
+			if hold_dur > 0.35:
+				var target_pos = get_global_mouse_position()
+				for p in active_pets:
+					if is_instance_valid(p) and p.has_method("walk_to_tap_location") and not p.is_dragging:
+						p.call("walk_to_tap_location", target_pos, false)
+
+	# Auto-save active pets every 30 seconds
+	autosave_timer += delta
+	if autosave_timer >= 30.0:
+		autosave_timer = 0.0
+		save_active_pets()
+
 	if Settings.play_pen_mode or OS.get_name() == "Android":
 		return
 
@@ -502,25 +553,42 @@ var last_click_time: float = 0.0
 var last_click_pos: Vector2 = Vector2.ZERO
 
 func _unhandled_input(event):
-	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
-		var now = OS.get_ticks_msec() * 0.001
-		var pos = event.global_position
-		var delta_t = now - last_click_time
-		var dist = pos.distance_to(last_click_pos)
-		
-		if delta_t <= 0.38 and dist <= 30.0:
-			# Double click / double tap: walk pet to tap location with dig chance
-			last_click_time = 0.0
-			for p in active_pets:
-				if is_instance_valid(p) and p.has_method("walk_to_tap_location"):
-					p.call("walk_to_tap_location", pos, true)
+	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT:
+		if event.pressed:
+			is_pointer_holding = true
+			pointer_hold_start_time = OS.get_ticks_msec() * 0.001
+			pointer_hold_pos = event.global_position
+
+			var now = OS.get_ticks_msec() * 0.001
+			var pos = event.global_position
+			var delta_t = now - last_click_time
+			var dist = pos.distance_to(last_click_pos)
+			
+			if delta_t <= 0.38 and dist <= 30.0:
+				# Double click / double tap: walk pet to tap location with dig chance
+				last_click_time = 0.0
+				for p in active_pets:
+					if is_instance_valid(p) and p.has_method("walk_to_tap_location"):
+						p.call("walk_to_tap_location", pos, true)
+			else:
+				# Single click / single tap: Cage glass tap attention!
+				last_click_time = now
+				last_click_pos = pos
+				for p in active_pets:
+					if is_instance_valid(p) and p.has_method("on_glass_tapped"):
+						p.call("on_glass_tapped", pos)
 		else:
-			# Single click / single tap: Cage glass tap attention!
-			last_click_time = now
-			last_click_pos = pos
-			for p in active_pets:
-				if is_instance_valid(p) and p.has_method("on_glass_tapped"):
-					p.call("on_glass_tapped", pos)
+			is_pointer_holding = false
+
+	elif event is InputEventScreenTouch:
+		if event.pressed:
+			is_pointer_holding = true
+			pointer_hold_start_time = OS.get_ticks_msec() * 0.001
+			pointer_hold_pos = event.position
+		else:
+			is_pointer_holding = false
+	elif event is InputEventScreenDrag:
+		pointer_hold_pos = event.position
 
 	elif event is InputEventKey and event.pressed:
 		match event.scancode:
@@ -624,3 +692,73 @@ func euthanize_pet(pet_info: Dictionary):
 		dir.remove(file_path)
 		
 	load_pet_roster()
+
+func save_active_pets():
+	var pet_list = []
+	for p in active_pets:
+		if is_instance_valid(p):
+			var p_dict = {
+				"pet_id": p.pet_id,
+				"pet_name": p.pet_name,
+				"pos_x": p.global_position.x,
+				"pos_y": p.global_position.y,
+				"hunger": p.stats.hunger if p.stats else 100.0,
+				"energy": p.stats.energy if p.stats else 100.0,
+				"boredom": p.stats.boredom if p.stats else 100.0,
+				"affection": p.stats.affection if p.stats else 100.0,
+				"curiosity": p.stats.curiosity if p.stats else 100.0,
+				"agitation": p.stats.agitation if p.stats else 0.0,
+				"wellness": p.stats.wellness if p.stats else 100.0,
+				"toilet": p.stats.toilet if p.stats else 0.0,
+				"life_stage": p.life_stage,
+				"time_outside": p.time_outside_dispenser_seconds
+			}
+			pet_list.append(p_dict)
+	
+	var f = File.new()
+	if f.open("user://active_pets.json", File.WRITE) == OK:
+		f.store_string(JSON.print(pet_list, "  "))
+		f.close()
+
+func restore_active_pets():
+	var f = File.new()
+	if not f.file_exists("user://active_pets.json"):
+		return
+	if f.open("user://active_pets.json", File.READ) == OK:
+		var text = f.get_as_text()
+		f.close()
+		var res = JSON.parse(text)
+		if res.error == OK and res.result is Array:
+			for p_dict in res.result:
+				var pid = p_dict.get("pet_id", "")
+				var roster_entry = null
+				for entry in pet_roster:
+					if entry.get("pet_id", "") == pid:
+						roster_entry = entry
+						break
+				if roster_entry != null:
+					summon_pet(roster_entry)
+					for p in active_pets:
+						if is_instance_valid(p) and p.pet_id == pid:
+							if p_dict.has("pos_x") and p_dict.has("pos_y"):
+								p.global_position = Vector2(p_dict["pos_x"], p_dict["pos_y"])
+							if p.stats:
+								p.stats.hunger = p_dict.get("hunger", 100.0)
+								p.stats.energy = p_dict.get("energy", 100.0)
+								p.stats.boredom = p_dict.get("boredom", 100.0)
+								p.stats.affection = p_dict.get("affection", 100.0)
+								p.stats.curiosity = p_dict.get("curiosity", 100.0)
+								p.stats.agitation = p_dict.get("agitation", 0.0)
+								p.stats.wellness = p_dict.get("wellness", 100.0)
+								p.stats.toilet = p_dict.get("toilet", 0.0)
+							p.life_stage = p_dict.get("life_stage", "adult")
+							p.time_outside_dispenser_seconds = p_dict.get("time_outside", 0.0)
+							p.transition_scale = 1.0
+							if p.has_method("_change_state"):
+								p.call("_change_state", 0) # State.IDLE
+							
+							# Reset soft body points and trailing segments to full 1.0 scale
+							for pt_i in range(p.point_positions.size()):
+								p.point_positions[pt_i] = p.global_position + (p.target_relative_offsets[pt_i] if pt_i < p.target_relative_offsets.size() else Vector2.ZERO)
+							for seg_i in range(p.segment_positions.size()):
+								p.segment_positions[seg_i] = p.global_position + Vector2.LEFT * (seg_i * p.active_breed.segment_spacing)

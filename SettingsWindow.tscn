@@ -125,10 +125,29 @@ margin_right = 310.0
 margin_bottom = 32.0
 text = "Enable"
 
-[node name="Spacer2" type="Control" parent="Panel/Margin/VBox"]
+[node name="OldAgeDeathRow" type="HBoxContainer" parent="Panel/Margin/VBox"]
 margin_top = 216.0
 margin_right = 310.0
-margin_bottom = 280.0
+margin_bottom = 248.0
+rect_min_size = Vector2( 0, 32 )
+
+[node name="Label" type="Label" parent="Panel/Margin/VBox/OldAgeDeathRow"]
+margin_top = 9.0
+margin_right = 230.0
+margin_bottom = 23.0
+size_flags_horizontal = 3
+text = "Allow Old Age Death:"
+
+[node name="OldAgeDeathCheck" type="CheckBox" parent="Panel/Margin/VBox/OldAgeDeathRow"]
+margin_left = 234.0
+margin_right = 310.0
+margin_bottom = 32.0
+text = "Enable"
+
+[node name="Spacer2" type="Control" parent="Panel/Margin/VBox"]
+margin_top = 260.0
+margin_right = 310.0
+margin_bottom = 320.0
 rect_min_size = Vector2( 0, 20 )
 size_flags_vertical = 3
 

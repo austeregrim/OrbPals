@@ -2,11 +2,21 @@ extends Control
 
 signal settings_applied
 signal tab_clicked(tab_id)
+signal debug_unlocked
 
+onready var play_pen_row = $Panel/Margin/VBox/PlayPenRow
 onready var play_pen_check = $Panel/Margin/VBox/PlayPenRow/PlayPenCheck
+
+onready var screen_row = $Panel/Margin/VBox/ScreenRow
 onready var screen_dropdown = $Panel/Margin/VBox/ScreenRow/ScreenDropdown
+
 onready var fps_dropdown = $Panel/Margin/VBox/FpsRow/FpsDropdown
+
+onready var window_detection_row = $Panel/Margin/VBox/WindowObstaclesRow
 onready var window_detection_check = $Panel/Margin/VBox/WindowObstaclesRow/WindowObstaclesCheck
+
+onready var old_age_death_row = $Panel/Margin/VBox/OldAgeDeathRow
+onready var old_age_death_check = $Panel/Margin/VBox/OldAgeDeathRow/OldAgeDeathCheck
 
 onready var save_btn = $Panel/Margin/VBox/BtnRow/SaveBtn
 onready var cancel_btn = $Panel/Margin/VBox/BtnRow/CancelBtn
@@ -16,6 +26,7 @@ var fps_values = [30, 60, 90, 120, 0] # 0 represents unlimited
 
 var is_dragging = false
 var drag_offset = Vector2.ZERO
+var title_tap_count = 0
 
 func _ready():
 	save_btn.connect("pressed", self, "_on_save_pressed")
@@ -39,6 +50,16 @@ func _on_titlebar_gui_input(event):
 		if event.pressed:
 			is_dragging = true
 			drag_offset = event.global_position - $Panel.rect_global_position
+			
+			title_tap_count += 1
+			if title_tap_count >= 5:
+				if not Settings.debug_unlocked:
+					Settings.debug_unlocked = true
+					Settings.save_settings()
+					emit_signal("debug_unlocked")
+					var main = get_parent()
+					if main and main.has_method("_on_debug_unlocked"):
+						main.call("_on_debug_unlocked")
 		else:
 			is_dragging = false
 	elif event is InputEventMouseMotion and is_dragging:
@@ -56,6 +77,16 @@ func open():
 	raise()
 
 func setup_ui():
+	var is_mobile = OS.get_name() == "Android" or OS.has_feature("mobile")
+	
+	# Mobile vs Desktop option filtering
+	if play_pen_row:
+		play_pen_row.visible = not is_mobile
+	if screen_row:
+		screen_row.visible = not is_mobile
+	if window_detection_row:
+		window_detection_row.visible = not is_mobile
+		
 	# 1. Play Pen Check
 	play_pen_check.pressed = Settings.play_pen_mode
 	
@@ -85,6 +116,10 @@ func setup_ui():
 		
 	# 4. Window Obstacles Check
 	window_detection_check.pressed = Settings.window_detection
+	
+	# 5. Old Age Death Check
+	if old_age_death_check:
+		old_age_death_check.pressed = Settings.pet_mortality_enabled
 
 func _on_save_pressed():
 	# Update Settings values
@@ -96,6 +131,8 @@ func _on_save_pressed():
 		Settings.target_fps = fps_values[fps_idx]
 		
 	Settings.window_detection = window_detection_check.pressed
+	if old_age_death_check:
+		Settings.pet_mortality_enabled = old_age_death_check.pressed
 	
 	# Save to disk
 	Settings.save_settings()

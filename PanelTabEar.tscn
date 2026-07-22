@@ -14,9 +14,9 @@ shadow_color = Color( 0, 0, 0, 0.25 )
 shadow_size = 4
 
 [node name="PanelTabEar" type="Control"]
-margin_right = 50.0
-margin_bottom = 44.0
-rect_min_size = Vector2( 50, 44 )
+margin_right = 52.0
+margin_bottom = 48.0
+rect_min_size = Vector2( 52, 48 )
 script = ExtResource( 1 )
 
 [node name="Button" type="Button" parent="."]
