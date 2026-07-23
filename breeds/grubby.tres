@@ -21,4 +21,6 @@ num_limbs = 0
 limb_lengths = [ 10.0, 10.0 ]
 voice_version = 0
 voice_pitch = 1
+has_snore_trait = true
+
 

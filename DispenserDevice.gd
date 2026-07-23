@@ -189,19 +189,23 @@ func _on_boombox_pressed():
 
 
 func _on_summon_pressed():
+	if AudioManager: AudioManager.play_button_beep()
 	var idx = breed_dropdown.selected
 	if idx >= 0 and idx < available_pets.size():
 		emit_signal("summon_pet", available_pets[idx])
 
 func _on_recall_pressed():
+	if AudioManager: AudioManager.play_button_beep()
 	var idx = breed_dropdown.selected
 	if idx >= 0 and idx < available_pets.size():
 		emit_signal("recall_pet", available_pets[idx])
 
 func _on_recall_all_pressed():
+	if AudioManager: AudioManager.play_button_beep()
 	emit_signal("recall_all_pets")
 
 func _on_euthanize_pressed():
+	if AudioManager: AudioManager.play_button_beep()
 	var idx = breed_dropdown.selected
 	if idx >= 0 and idx < available_pets.size():
 		pending_euthanize_pet = available_pets[idx]

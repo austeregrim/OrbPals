@@ -19,7 +19,9 @@ export(bool) var has_limbs = false
 export(int) var num_limbs = 0
 export(Array, float) var limb_lengths = [12.0, 12.0]
 
-# Voice Genetics
+# Voice Genetics & Traits
 export(int) var voice_version = 0 # 0 (Sine), 1 (Saw/Triangle), 2 (FM), 3 (Raspy)
 export(int) var voice_pitch = 1   # 0 (Low), 1 (Medium), 2 (High)
+export(bool) var has_snore_trait = false
+
 

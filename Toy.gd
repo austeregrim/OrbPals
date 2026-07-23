@@ -186,6 +186,17 @@ func _physics_process(delta):
 
 			if play_bounce_sfx and AudioManager:
 				AudioManager.play_ball_bounce()
+
+			# Ball collision with pets (wakes sleeping pets & bounces)
+			if velocity.length() > 60.0 and main and ("active_pets" in main):
+				for pet in main.active_pets:
+					if is_instance_valid(pet) and global_position.distance_to(pet.global_position) < radius + pet.base_radius:
+						if pet.has_method("wake_up_if_sleeping"):
+							pet.call("wake_up_if_sleeping", "ball_hit")
+						if AudioManager:
+							AudioManager.play_thud()
+						velocity = (global_position - pet.global_position).normalized() * velocity.length() * 0.75
+
 		else:
 			# Non-ball toys (Chew, Stuffed Animal, Boombox) remain where placed on screen
 			global_position += velocity * delta

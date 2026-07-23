@@ -254,7 +254,13 @@ func _reposition_all_side_panels(animated: bool = false):
 		if is_instance_valid(p) and is_tab_open(tid):
 			p.raise()
 
+func schedule_tab_auto_close(tab_name: String, delay: float = 4.0):
+	yield(get_tree().create_timer(delay), "timeout")
+	if is_tab_open(tab_name):
+		toggle_drawer_panel(tab_name)
+
 func toggle_drawer_panel(tab_name: String):
+
 	if tab_name == "debug" and not Settings.debug_unlocked:
 		return
 
@@ -427,7 +433,17 @@ func save_inventory():
 		f.store_string(JSON.print(inventory, "  "))
 		f.close()
 
+func add_inventory_item(item_id: String, amount: int = 1):
+	var current = int(inventory.get(item_id, 0))
+	inventory[item_id] = current + amount
+	save_inventory()
+	if AudioManager:
+		AudioManager.play_material_pickup()
+	if is_instance_valid(inventory_window) and inventory_window.has_method("refresh"):
+		inventory_window.call("refresh")
+
 func load_inventory():
+
 	inventory.clear()
 	var f = File.new()
 	if f.file_exists("user://inventory.json"):

@@ -122,7 +122,10 @@ func _get_tooltip_text(id: String) -> String:
 		_: return id.capitalize()
 
 func _on_button_pressed():
+	if AudioManager:
+		AudioManager.play_button_beep()
 	emit_signal("tab_clicked", tab_id)
+
 
 func set_active(is_active: bool):
 	_apply_custom_style(is_active)

@@ -41,7 +41,10 @@ func _on_theme_color_changed(color: Color):
 			icon.modulate = icon_mod
 
 func _on_tab_pressed(tab_name: String):
+	if AudioManager:
+		AudioManager.play_button_beep()
 	emit_signal("tab_selected", tab_name)
+
 
 func set_active_tab(tab_name: String):
 	active_tab_name = tab_name

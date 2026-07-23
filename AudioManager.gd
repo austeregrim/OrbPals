@@ -170,25 +170,71 @@ func synthesize_sound(params: Dictionary) -> AudioStreamSample:
 func play_footstep_walk():
 	if not sample_cache.has("footstep_walk"):
 		sample_cache["footstep_walk"] = synthesize_sound({
-			"duration": 0.08, "wave_type": "noise",
-			"freq_start": 1400.0, "freq_end": 950.0,
-			"attack": 0.01, "decay": 0.07,
-			"noise_ratio": 0.9, "volume": 0.35
+			"duration": 0.06, "wave_type": "noise",
+			"freq_start": 1200.0, "freq_end": 850.0,
+			"attack": 0.008, "decay": 0.052,
+			"noise_ratio": 0.95, "volume": 0.15
 		})
-	play_stream(sample_cache["footstep_walk"], 0.45, rand_range(0.95, 1.05))
+	play_stream(sample_cache["footstep_walk"], 0.22, rand_range(0.95, 1.05))
 
 func play_footstep_run():
 	if not sample_cache.has("footstep_run"):
 		sample_cache["footstep_run"] = synthesize_sound({
-			"duration": 0.045, "wave_type": "triangle",
-			"freq_start": 1750.0, "freq_end": 1200.0,
-			"attack": 0.002, "decay": 0.038,
-			"noise_ratio": 0.45, "volume": 0.45
+			"duration": 0.04, "wave_type": "triangle",
+			"freq_start": 1500.0, "freq_end": 1100.0,
+			"attack": 0.002, "decay": 0.035,
+			"noise_ratio": 0.5, "volume": 0.20
 		})
-	play_stream(sample_cache["footstep_run"], 0.55, rand_range(0.96, 1.08))
+	play_stream(sample_cache["footstep_run"], 0.28, rand_range(0.96, 1.08))
 
+func play_material_pickup():
+	if not sample_cache.has("material_pickup"):
+		sample_cache["material_pickup"] = synthesize_sound({
+			"duration": 0.16, "wave_type": "sine",
+			"freq_start": 1950.0, "freq_end": 2600.0,
+			"attack": 0.003, "decay": 0.157,
+			"volume": 0.75
+		})
+	play_stream(sample_cache["material_pickup"], 0.7, rand_range(0.96, 1.08))
+
+func play_munch():
+	if not sample_cache.has("munch"):
+		sample_cache["munch"] = synthesize_sound({
+			"duration": 0.10, "wave_type": "triangle",
+			"freq_start": 380.0, "freq_end": 160.0,
+			"attack": 0.01, "decay": 0.09,
+			"noise_ratio": 0.75, "volume": 0.8
+		})
+	play_stream(sample_cache["munch"], 0.75, rand_range(0.9, 1.15))
+
+func play_glug():
+	if not sample_cache.has("glug"):
+		sample_cache["glug"] = synthesize_sound({
+			"duration": 0.14, "wave_type": "sine",
+			"freq_start": 210.0, "freq_end": 360.0,
+			"attack": 0.012, "decay": 0.128,
+			"volume": 0.85
+		})
+	play_stream(sample_cache["glug"], 0.8, rand_range(0.92, 1.06))
+
+func play_snore(pet_node: Node = null):
+	var pitch_scale = 1.0
+	if is_instance_valid(pet_node):
+		var v_pitch_idx = int(pet_node.get("voice_pitch")) if ("voice_pitch" in pet_node) else 1
+		if v_pitch_idx == 0: pitch_scale = 0.8
+		elif v_pitch_idx == 2: pitch_scale = 1.2
+		
+	if not sample_cache.has("snore"):
+		sample_cache["snore"] = synthesize_sound({
+			"duration": 0.55, "wave_type": "fm",
+			"freq_start": 130.0, "freq_end": 85.0,
+			"attack": 0.12, "decay": 0.43,
+			"noise_ratio": 0.35, "fm_mult": 1.5, "volume": 0.55
+		})
+	play_stream(sample_cache["snore"], 0.45, pitch_scale * rand_range(0.95, 1.05))
 
 func play_digging():
+
 	if not sample_cache.has("digging"):
 		sample_cache["digging"] = synthesize_sound({
 			"duration": 0.18, "wave_type": "noise",

@@ -81,6 +81,8 @@ export(float) var bounce_damping = 0.6
 export(float) var gravity = 300.0
 export(int) var num_points = 16
 export(bool) var show_debug_stuffie_spot: bool = false
+export(bool) var has_snore_trait: bool = false
+
 
 
 var active_breed = null
@@ -370,6 +372,7 @@ func _physics_process(delta):
 	# 4. Center node movement
 	bounds = _get_viewport_bounds()
 	if is_dragging:
+		wake_up_if_sleeping("dragged")
 
 		var mouse_pos = prev_mouse_pos if prev_mouse_pos != Vector2.ZERO else get_global_mouse_position()
 		global_position = mouse_pos
@@ -390,8 +393,19 @@ func _physics_process(delta):
 				stats.agitation = clamp(stats.agitation - 0.1, 0.0, 100.0)
 		prev_mouse_pos = mouse_pos
 	else:
+		# Check pet-to-pet touch wake up trigger
+		var closest_other = _find_closest_other_pet()
+		if is_instance_valid(closest_other):
+			var touch_dist = base_radius + closest_other.base_radius + 4.0
+			if global_position.distance_to(closest_other.global_position) <= touch_dist:
+				if current_state == State.SLEEPING:
+					wake_up_if_sleeping("touched")
+				if closest_other.current_state == State.SLEEPING:
+					closest_other.wake_up_if_sleeping("touched")
+
 		# Physics movement
 		var apply_grav = is_falling or current_state == State.EMERGING_FROM_DISPENSER
+
 		if apply_grav:
 			center_vel.y += gravity * delta
 
@@ -1077,7 +1091,15 @@ func _evaluate_states(delta):
 				if not _scan_for_food_or_treat():
 					_change_state(State.IDLE)
 
+func wake_up_if_sleeping(reason: String = ""):
+	if current_state == State.SLEEPING:
+		_change_state(State.IDLE)
+		if AudioManager:
+			AudioManager.play_pet_emotion(self, "question_huh")
+		_show_learning_emote("[AWAKE]")
+
 func _change_state(new_state: int):
+
 	current_state = new_state
 	state_timer = 0.0
 	if new_state != State.EMERGING_FROM_DISPENSER and new_state != State.RETURNING_TO_DISPENSER:
@@ -1186,6 +1208,9 @@ func _update_state_behavior(delta):
 						var chosen_tab = available_tabs[randi() % available_tabs.size()]
 						if main.has_method("toggle_drawer_panel"):
 							main.call("toggle_drawer_panel", chosen_tab)
+							if main.has_method("schedule_tab_auto_close"):
+								main.call("schedule_tab_auto_close", chosen_tab, 4.0)
+
 						
 						if chosen_tab == "dispenser" and (randf() < 0.5):
 							var nozzle_pos = Vector2(OS.window_size.x / 2.0, 150.0)
@@ -1303,10 +1328,22 @@ func _update_state_behavior(delta):
 					_change_state(State.IDLE)
 				
 		State.SLEEPING:
-			# Wake up slowly
-			stats.energy = clamp(stats.energy + delta * 12.0, 0.0, 100.0)
+			# Wake up slowly (slower energy recovery rate: 7.5/sec -> ~13.3 sec full sleep)
+			stats.energy = clamp(stats.energy + delta * 7.5, 0.0, 100.0)
 			
+			# Trigger 1: Wake up automatically when energy is fully recovered!
+			if stats.energy >= 100.0:
+				wake_up_if_sleeping("energy_full")
+				return
+				
+			# Snoring sound for pets with snoring trait!
+			if has_snore_trait and fmod(state_timer, 2.6) < delta:
+				if AudioManager:
+					AudioManager.play_snore(self)
+				_show_learning_emote("[ZzZ...]")
+
 		State.EATING:
+
 			# Eat animation vibration
 			var shake = Vector2(rand_range(-2, 2), rand_range(-2, 2))
 			global_position += shake

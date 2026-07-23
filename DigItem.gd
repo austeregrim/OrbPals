@@ -41,13 +41,19 @@ func collect_item():
 		return
 	is_collected = true
 	
+	if AudioManager:
+		AudioManager.play_material_pickup()
+		
 	var main = get_parent()
-	if main and ("inventory" in main):
+	if main and main.has_method("add_inventory_item"):
+		main.call("add_inventory_item", item_type, 1)
+	elif main and ("inventory" in main):
 		main.inventory[item_type] = main.inventory.get(item_type, 0) + 1
 		_spawn_floating_text("+1 " + item_type.replace("_", " ").capitalize())
 		
 	emit_signal("collected", item_type)
 	queue_free()
+
 
 func _spawn_floating_text(txt: String):
 	var main = get_parent()

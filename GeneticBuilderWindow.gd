@@ -56,9 +56,11 @@ func _ready():
 		tab_ear.icon_text = "GENE"
 		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
 
-	refresh_strand_ui()
+	call_deferred("refresh_strand_ui")
+
 
 func toggle_undock():
+
 	is_undocked = not is_undocked
 	_update_undock_button_ui()
 	var main = get_parent()
@@ -115,7 +117,10 @@ func open():
 	refresh_strand_ui()
 
 func _on_frag_btn_pressed(f_name: String):
+	if AudioManager:
+		AudioManager.play_button_beep()
 	var main = get_parent()
+
 	var inv = main.inventory if (main and "inventory" in main) else {}
 
 	var available_count = inv.get(f_name, 0)
