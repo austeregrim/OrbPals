@@ -1,6 +1,7 @@
 extends Node
 
-const VERSION = "1.0.1"
+const VERSION = "1.1.0"
+
 
 var play_pen_mode: bool = false
 var screen_index: int = -1 # -1 = All Screens
