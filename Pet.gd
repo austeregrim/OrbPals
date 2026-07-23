@@ -80,8 +80,10 @@ export(float) var damping = 14.0
 export(float) var bounce_damping = 0.6
 export(float) var gravity = 300.0
 export(int) var num_points = 16
+export(bool) var show_debug_stuffie_spot: bool = true
 
 var active_breed = null
+
 var base_radius = 20.0
 var segment_positions = []
 
@@ -240,6 +242,10 @@ func _get_or_create_stuffed_animal_spot() -> Vector2:
 	var bounds = _get_viewport_bounds()
 	
 	if stuffed_animal_spot != Vector2.ZERO and _is_spot_reachable_and_valid(stuffed_animal_spot):
+		return stuffed_animal_spot
+		
+	if is_instance_valid(guarded_toy) and _is_spot_reachable_and_valid(guarded_toy.global_position):
+		stuffed_animal_spot = guarded_toy.global_position
 		return stuffed_animal_spot
 		
 	var margin_x = clamp(base_radius + 65.0, 70.0, bounds.size.x * 0.25)
@@ -1941,6 +1947,34 @@ func _draw():
 	if has_cheeks:
 		_draw_cheeks()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(transition_scale * s, transition_scale * s))
+	_draw_debug_stuffie_spot()
+
+func _draw_debug_stuffie_spot():
+	if not show_debug_stuffie_spot or not is_instance_valid(guarded_toy) or stuffed_animal_spot == Vector2.ZERO:
+		return
+		
+	# Reset transform to 1:1 local pixel offset relative to pet global position
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	
+	var local_spot = to_local(stuffed_animal_spot)
+	var local_toy = to_local(guarded_toy.global_position)
+	
+	# Connecting lines
+	draw_line(Vector2.ZERO, local_toy, Color(1.0, 0.0, 0.8, 0.45), 1.5)
+	draw_line(local_toy, local_spot, Color(0.9, 0.9, 0.1, 0.75), 2.0)
+	
+	# Target Crosshairs
+	var cross_col = Color("00e5ff") # Bright Cyan
+	var ring_col = Color("ff007f") # Bright Magenta
+	
+	draw_arc(local_spot, 16.0, 0, 2 * PI, 24, ring_col, 2.0)
+	draw_circle(local_spot, 4.0, cross_col)
+	
+	draw_line(local_spot + Vector2(-22, 0), local_spot + Vector2(-6, 0), cross_col, 2.0)
+	draw_line(local_spot + Vector2(6, 0), local_spot + Vector2(22, 0), cross_col, 2.0)
+	draw_line(local_spot + Vector2(0, -22), local_spot + Vector2(0, -6), cross_col, 2.0)
+	draw_line(local_spot + Vector2(0, 6), local_spot + Vector2(0, 22), cross_col, 2.0)
+
 
 func can_use_ability() -> bool:
 	return life_stage != "hatchling"
