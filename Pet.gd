@@ -113,6 +113,8 @@ var drag_positions = []
 var prev_mouse_pos = Vector2.ZERO
 var stuffed_animal_spot: Vector2 = Vector2.ZERO
 var drag_history: Array = []
+var stuffie_carry_timer: float = 0.0
+
 
 
 # Interaction targets
@@ -217,20 +219,44 @@ func _ready():
 
 	_change_state(State.IDLE)
 
+func _is_spot_reachable_and_valid(spot: Vector2) -> bool:
+	var bounds = _get_viewport_bounds()
+	var margin_x = base_radius + 50.0
+	var margin_y = base_radius + 25.0
+	if spot.x < bounds.position.x + margin_x or spot.x > bounds.end.x - margin_x:
+		return false
+	if spot.y < bounds.position.y + margin_y or spot.y > bounds.end.y - margin_y:
+		return false
+		
+	var main_ref = get_parent()
+	if main_ref and "desktop_window_manager" in main_ref and is_instance_valid(main_ref.desktop_window_manager):
+		var rects = main_ref.desktop_window_manager.get_window_rects()
+		for r in rects:
+			if r.grow(base_radius + 20.0).has_point(spot):
+				return false
+	return true
+
 func _get_or_create_stuffed_animal_spot() -> Vector2:
 	var bounds = _get_viewport_bounds()
-	var margin = 75.0
 	
-	if stuffed_animal_spot != Vector2.ZERO and bounds.has_point(stuffed_animal_spot):
+	if stuffed_animal_spot != Vector2.ZERO and _is_spot_reachable_and_valid(stuffed_animal_spot):
 		return stuffed_animal_spot
 		
-	var spot_x = bounds.position.x + margin
-	if int(genetic_seed) % 2 == 1:
-		spot_x = bounds.end.x - margin
-	var spot_y = bounds.end.y - base_radius - 15.0
+	var margin_x = clamp(base_radius + 65.0, 70.0, bounds.size.x * 0.25)
+	var margin_y = base_radius + 30.0
 	
-	stuffed_animal_spot = Vector2(spot_x, spot_y)
+	var spot_x = bounds.position.x + margin_x
+	if int(genetic_seed) % 2 == 1:
+		spot_x = bounds.end.x - margin_x
+	var spot_y = bounds.end.y - margin_y
+	
+	var candidate = Vector2(spot_x, spot_y)
+	if not _is_spot_reachable_and_valid(candidate):
+		candidate = Vector2(bounds.position.x + bounds.size.x * 0.5, bounds.end.y - margin_y)
+		
+	stuffed_animal_spot = candidate
 	return stuffed_animal_spot
+
 
 func _physics_process(delta):
 
@@ -473,21 +499,33 @@ func _physics_process(delta):
 		if dist_from_spot > 40.0 and current_state != State.SICK and current_state != State.SLEEPING and current_state != State.RELIEVING_SELF:
 			var dist_to_toy = global_position.distance_to(guarded_toy.global_position)
 			if dist_to_toy > base_radius + 25.0:
+				stuffie_carry_timer = 0.0
 				target_wander_pos = guarded_toy.global_position
 				var dir = (guarded_toy.global_position - global_position).normalized()
 				center_vel = dir * 110.0
 			else:
-				# Carrying / dragging stuffed animal back to target_spot!
+				# Carrying stuffed animal back towards target_spot
+				stuffie_carry_timer += delta
 				guarded_toy.global_position = lerp(guarded_toy.global_position, global_position + Vector2(10.0 * facing_dir, 0.0), 0.35)
 				target_wander_pos = target_spot
 				var dir = (target_spot - global_position).normalized()
 				center_vel = dir * 90.0
 				
-				if global_position.distance_to(target_spot) < 30.0:
-					guarded_toy.global_position = target_spot
+				var dist_to_target = global_position.distance_to(target_spot)
+				# Complete placement if close enough (< 45px) OR if stuck/blocked (> 2.5s)
+				if dist_to_target < 45.0 or stuffie_carry_timer > 2.5:
+					var place_pos = global_position + Vector2(12.0 * facing_dir, 0.0)
+					place_pos.x = clamp(place_pos.x, bounds.position.x + 30.0, bounds.end.x - 30.0)
+					place_pos.y = clamp(place_pos.y, bounds.position.y + 30.0, bounds.end.y - 30.0)
+					
+					guarded_toy.global_position = place_pos
 					guarded_toy.velocity = Vector2.ZERO
-					if AudioManager and randf() < 0.1:
+					stuffed_animal_spot = place_pos
+					stuffie_carry_timer = 0.0
+					
+					if AudioManager and randf() < 0.2:
 						AudioManager.play_pet_emotion(self, "giggle")
+
 
 		# Check for intruding pets near spot or stuffed animal
 		var intruder = _find_closest_other_pet()
