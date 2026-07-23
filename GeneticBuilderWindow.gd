@@ -278,8 +278,11 @@ func _on_hatch_pressed():
 		"time_outside_dispenser_seconds": 0.0,
 		"decay_modifiers": decay_mods,
 		"bored_eater": bored_eater,
+		"voice_version": (rng.randi() % 4),
+		"voice_pitch": (rng.randi() % 3),
 		"weight": 1.0
 	}
+
 	
 	if main and main.has_method("save_custom_pet"):
 		main.save_custom_pet(pet_data)

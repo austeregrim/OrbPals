@@ -15,14 +15,14 @@ export(String) var toy_type: String = "ball"
 var durability: float = 100.0
 var max_durability: float = 100.0
 
-# Stuffed Animal guarding
+# Stuffed Animal persistent ownership
+var owner_pet_id: String = ""
 var owner_pet: Node = null
 var is_being_guarded: bool = false
 
 # Boombox properties
 var current_track: int = 0 # 0 = OFF, 1..5 = Tracks
-var hit_count: int = 0
-var max_hits: int = 6
+var recent_smack_times: Array = []
 var is_broken: bool = false
 var beat_anim_timer: float = 0.0
 
@@ -277,11 +277,20 @@ func smack_boombox():
 		if AudioManager: AudioManager.play_boombox_hit()
 		return
 		
-	hit_count += 1
+	var now = OS.get_ticks_msec() * 0.001
+	recent_smack_times.append(now)
+	
+	# Prune smacks older than 3.0 seconds
+	var valid_smacks = []
+	for t in recent_smack_times:
+		if now - t <= 3.0:
+			valid_smacks.append(t)
+	recent_smack_times = valid_smacks
+
 	if AudioManager:
 		AudioManager.play_boombox_hit()
-		
-	if hit_count >= max_hits:
+
+	if recent_smack_times.size() >= 4:
 		is_broken = true
 		current_track = 0
 		if AudioManager:
@@ -291,6 +300,7 @@ func smack_boombox():
 		current_track = (current_track + 1) % 6
 		if AudioManager:
 			AudioManager.play_boombox_track(current_track)
+
 
 func apply_impulse(impulse: Vector2):
 	velocity += impulse

@@ -18,3 +18,8 @@ export(int) var num_tail_segments = 0
 export(bool) var has_limbs = false
 export(int) var num_limbs = 0
 export(Array, float) var limb_lengths = [12.0, 12.0]
+
+# Voice Genetics
+export(int) var voice_version = 0 # 0 (Sine), 1 (Saw/Triangle), 2 (FM), 3 (Raspy)
+export(int) var voice_pitch = 1   # 0 (Low), 1 (Medium), 2 (High)
+

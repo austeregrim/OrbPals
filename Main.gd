@@ -295,6 +295,7 @@ func _ensure_default_preset_files():
 			"head_feature": "none", "horn_color": "ffffaa", "pattern_type": "belly_patch", "pattern_color": "7b1fa2",
 			"pupil_shape": "round", "has_cheeks": true, "cheek_color": "f48fb1",
 			"num_segments": 4, "base_radius": 22.0, "segment_spacing": 16.0, "has_limbs": true, "num_limbs": 2,
+			"voice_version": 0, "voice_pitch": 1,
 			"life_stage": "adult", "time_outside_dispenser_seconds": 0.0
 		},
 		"slinky": {
@@ -306,6 +307,7 @@ func _ensure_default_preset_files():
 			"head_feature": "ram_horns", "horn_color": "e0f7fa", "pattern_type": "tiger_stripes", "pattern_color": "006064",
 			"pupil_shape": "cat_eye", "has_cheeks": true, "cheek_color": "80deea",
 			"num_segments": 6, "base_radius": 20.0, "segment_spacing": 18.0, "has_limbs": true, "num_limbs": 4,
+			"voice_version": 1, "voice_pitch": 2,
 			"life_stage": "adult", "time_outside_dispenser_seconds": 0.0
 		},
 		"glub": {
@@ -317,6 +319,7 @@ func _ensure_default_preset_files():
 			"head_feature": "dino_frill", "horn_color": "e8f5e9", "pattern_type": "leopard_spots", "pattern_color": "1b5e20",
 			"pupil_shape": "lizard_eye", "has_cheeks": true, "cheek_color": "a5d6a7",
 			"num_segments": 3, "base_radius": 24.0, "segment_spacing": 14.0, "has_limbs": true, "num_limbs": 2,
+			"voice_version": 2, "voice_pitch": 0,
 			"life_stage": "adult", "time_outside_dispenser_seconds": 0.0
 		},
 		"gonzo": {
@@ -328,6 +331,7 @@ func _ensure_default_preset_files():
 			"head_feature": "unicorn_horn", "horn_color": "fff9c4", "pattern_type": "galaxy_swirl", "pattern_color": "880e4f",
 			"pupil_shape": "spider_eye", "has_cheeks": true, "cheek_color": "ff80ab",
 			"num_segments": 5, "base_radius": 22.0, "segment_spacing": 16.0, "has_limbs": true, "num_limbs": 2,
+			"voice_version": 3, "voice_pitch": 2,
 			"life_stage": "adult", "time_outside_dispenser_seconds": 0.0
 		}
 	}

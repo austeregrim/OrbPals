@@ -19,3 +19,6 @@ num_tail_segments = 3
 has_limbs = true
 num_limbs = 2
 limb_lengths = [ 10.0, 10.0 ]
+voice_version = 2
+voice_pitch = 0
+

@@ -170,22 +170,22 @@ func synthesize_sound(params: Dictionary) -> AudioStreamSample:
 func play_footstep_walk():
 	if not sample_cache.has("footstep_walk"):
 		sample_cache["footstep_walk"] = synthesize_sound({
-			"duration": 0.12, "wave_type": "triangle",
-			"freq_start": 160.0, "freq_end": 70.0,
-			"attack": 0.01, "decay": 0.11,
-			"noise_ratio": 0.65, "volume": 0.45
+			"duration": 0.12, "wave_type": "square",
+			"freq_start": 280.0, "freq_end": 80.0,
+			"attack": 0.005, "decay": 0.115,
+			"noise_ratio": 0.5, "volume": 0.95
 		})
-	play_stream(sample_cache["footstep_walk"], 0.7, rand_range(0.95, 1.05))
+	play_stream(sample_cache["footstep_walk"], 1.0, rand_range(0.92, 1.08))
 
 func play_footstep_run():
 	if not sample_cache.has("footstep_run"):
 		sample_cache["footstep_run"] = synthesize_sound({
 			"duration": 0.08, "wave_type": "square",
-			"freq_start": 240.0, "freq_end": 90.0,
-			"attack": 0.005, "decay": 0.075,
-			"noise_ratio": 0.4, "volume": 0.6
+			"freq_start": 380.0, "freq_end": 110.0,
+			"attack": 0.003, "decay": 0.077,
+			"noise_ratio": 0.3, "volume": 1.0
 		})
-	play_stream(sample_cache["footstep_run"], 0.85, rand_range(0.98, 1.12))
+	play_stream(sample_cache["footstep_run"], 1.0, rand_range(0.95, 1.15))
 
 func play_digging():
 	if not sample_cache.has("digging"):
@@ -193,9 +193,9 @@ func play_digging():
 			"duration": 0.18, "wave_type": "noise",
 			"freq_start": 350.0, "freq_end": 180.0,
 			"attack": 0.02, "decay": 0.16,
-			"noise_ratio": 0.9, "volume": 0.75
+			"noise_ratio": 0.9, "volume": 0.85
 		})
-	play_stream(sample_cache["digging"], 0.9, rand_range(0.88, 1.15))
+	play_stream(sample_cache["digging"], 1.0, rand_range(0.88, 1.15))
 
 func play_ball_bounce(pitch_mod: float = 1.0):
 	if not sample_cache.has("ball_bounce"):
@@ -213,9 +213,9 @@ func play_mop_sweep():
 			"duration": 0.32, "wave_type": "noise",
 			"freq_start": 400.0, "freq_end": 200.0,
 			"attack": 0.08, "decay": 0.24,
-			"noise_ratio": 0.95, "volume": 0.5
+			"noise_ratio": 0.95, "volume": 0.7
 		})
-	play_stream(sample_cache["mop_sweep"], 0.75, rand_range(0.95, 1.05))
+	play_stream(sample_cache["mop_sweep"], 0.85, rand_range(0.95, 1.05))
 
 func play_thud():
 	if not sample_cache.has("thud"):
@@ -314,7 +314,7 @@ func play_pet_emotion(pet_node: Node, emotion: String):
 		sample_cache[cache_key] = _generate_emotion_sample(emotion, wave_type, noise_r, fm_m, pitch_mult)
 
 	var sample = sample_cache[cache_key]
-	play_stream(sample, 0.9, rand_range(0.96, 1.04))
+	play_stream(sample, 0.95, rand_range(0.96, 1.04))
 
 func _generate_emotion_sample(emotion: String, wave_type: String, noise_r: float, fm_m: float, pitch_mult: float) -> AudioStreamSample:
 	var base_freq = 400.0 * pitch_mult
@@ -405,7 +405,7 @@ func _generate_emotion_sample(emotion: String, wave_type: String, noise_r: float
 	})
 
 # ==============================================================================
-# BOOMBOX MUSIC TRACK GENERATOR
+# STRUCTURED PROCEDURAL MUSIC COMPOSITION ENGINE (music_tracks/)
 # ==============================================================================
 
 func play_boombox_track(track_index: int):
@@ -429,54 +429,86 @@ func stop_music():
 		music_player.stop()
 
 func _generate_music_track(track_id: int) -> AudioStreamSample:
-	# Synthesize a ~3.2 second seamless looping synth track
-	var duration = 3.2
+	var script_paths = [
+		"",
+		"res://music_tracks/orb_bop.gd",
+		"res://music_tracks/chill_lounge.gd",
+		"res://music_tracks/pal_dance.gd",
+		"res://music_tracks/spooky_groove.gd",
+		"res://music_tracks/star_chiptune.gd"
+	]
+	
+	var track_def = null
+	if track_id >= 1 and track_id < script_paths.size():
+		var script_res = load(script_paths[track_id])
+		if script_res:
+			track_def = script_res.new()
+			
+	if not track_def:
+		return _generate_fallback_track(track_id)
+		
+	var bpm = track_def.get("bpm") if ("bpm" in track_def) else 120.0
+	var notes = track_def.get("scale_notes") if ("scale_notes" in track_def) else [261.63, 293.66, 329.63, 349.23, 392.00, 440.00]
+	var seed_val = track_def.get("seed_value") if ("seed_value" in track_def) else 100
+	var structure = track_def.get("structure") if ("structure" in track_def) else ["INTRO", "VERSE", "CHORUS", "OUTRO"]
+	var progression = track_def.get("chord_progression") if ("chord_progression" in track_def) else [0, 3, 4, 0]
+	
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_val
+	
+	var beats_per_sec = bpm / 60.0
+	var duration = (structure.size() * 4.0) / beats_per_sec
 	var total_samples = int(duration * SAMPLE_RATE)
 	var bytes = PoolByteArray()
 	bytes.resize(total_samples * 2)
 
-	# Track notes & scale frequencies
-	var notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25] # C Major
-	if track_id == 4: # Minor key for Spooky Groove
-		notes = [220.00, 246.94, 261.63, 293.66, 329.63, 349.23, 392.00, 440.00] # A Minor
-
-	var beats_per_sec = 4.0
-	if track_id == 5:
-		beats_per_sec = 6.0 # Faster for Chiptune
+	# Pre-generate melody pattern per song section
+	var section_melodies = {}
+	for sec in ["INTRO", "VERSE", "CHORUS", "BRIDGE", "OUTRO"]:
+		var mel = []
+		for step in range(8):
+			if sec == "INTRO" or sec == "OUTRO":
+				mel.append(progression[step % progression.size()])
+			elif sec == "CHORUS":
+				mel.append((progression[step % progression.size()] + (rng.randi() % 3) * 2) % notes.size())
+			else:
+				mel.append((progression[step % progression.size()] + (rng.randi() % 2)) % notes.size())
+		section_melodies[sec] = mel
 
 	for i in range(total_samples):
 		var t = float(i) / float(SAMPLE_RATE)
-		var beat = int(t * beats_per_sec) % 8
-
-		# Select melody note based on track rhythm pattern
-		var note_idx = 0
-		if track_id == 1: # Orb Bop
-			note_idx = (beat * 3 + 2) % notes.size()
-		elif track_id == 2: # Chill Lounge
-			note_idx = (beat / 2) % notes.size()
-		elif track_id == 3: # Pal Dance
-			note_idx = (beat * 2) % notes.size()
-		elif track_id == 4: # Spooky Groove
-			note_idx = (beat * 5) % notes.size()
-		elif track_id == 5: # Chiptune
-			note_idx = (beat * 7 + 1) % notes.size()
-
+		var total_beat = int(t * beats_per_sec)
+		var sec_idx = (total_beat / 4) % structure.size()
+		var sec_name = structure[sec_idx]
+		var step_in_sec = total_beat % 4
+		
+		var mel_array = section_melodies.get(sec_name, [0, 2, 4, 3])
+		var note_idx = mel_array[step_in_sec % mel_array.size()] % notes.size()
 		var freq = notes[note_idx]
+		
 		var beat_t = fmod(t * beats_per_sec, 1.0)
-		var env = max(0.0, 1.0 - beat_t * 1.4)
+		var env = max(0.0, 1.0 - beat_t * 1.5)
 
-		# Lead wave
-		var lead_wave = sin(t * freq * 2.0 * PI)
-		if track_id == 1 or track_id == 5: # Chiptune square
-			lead_wave = 1.0 if sin(t * freq * 2.0 * PI) >= 0.0 else -1.0
-		elif track_id == 3: # Saw lead
-			lead_wave = (fmod(t * freq, 1.0)) * 2.0 - 1.0
+		var lead_inst = track_def.get("lead_instrument")
+		var lead_wave_type = lead_inst.get("wave", "square") if lead_inst else "square"
+		
+		var lead_val = 0.0
+		if lead_wave_type == "sine":
+			lead_val = sin(t * freq * 2.0 * PI)
+		elif lead_wave_type == "square":
+			lead_val = 1.0 if sin(t * freq * 2.0 * PI) >= 0.0 else -1.0
+		elif lead_wave_type == "saw":
+			lead_val = (fmod(t * freq, 1.0)) * 2.0 - 1.0
+		elif lead_wave_type == "triangle":
+			lead_val = (2.0 / PI) * asin(sin(t * freq * 2.0 * PI))
+		elif lead_wave_type == "fm":
+			lead_val = sin(t * freq * 2.0 * PI + sin(t * freq * 3.0 * 2.0 * PI) * 2.0)
 
-		# Sub-bass rhythm
-		var bass_freq = notes[beat % 4] * 0.5
-		var bass_wave = sin(t * bass_freq * 2.0 * PI) * 0.6
-
-		var mix_val = (lead_wave * env * 0.5 + bass_wave * 0.5) * 0.6
+		# Bass instrument
+		var bass_freq = notes[progression[step_in_sec % progression.size()]] * 0.5
+		var bass_val = sin(t * bass_freq * 2.0 * PI) * 0.6
+		
+		var mix_val = (lead_val * env * 0.5 + bass_val * 0.5) * 0.65
 		var int_val = int(clamp(mix_val * 24000.0, -30000.0, 30000.0))
 
 		if int_val < 0:
@@ -485,3 +517,29 @@ func _generate_music_track(track_id: int) -> AudioStreamSample:
 		bytes.set(i * 2 + 1, (int_val >> 8) & 0xFF)
 
 	return create_sample_from_pcm(bytes, true)
+
+func _generate_fallback_track(track_id: int) -> AudioStreamSample:
+	var duration = 3.2
+	var total_samples = int(duration * SAMPLE_RATE)
+	var bytes = PoolByteArray()
+	bytes.resize(total_samples * 2)
+
+	var notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00]
+	var beats_per_sec = 4.0
+
+	for i in range(total_samples):
+		var t = float(i) / float(SAMPLE_RATE)
+		var beat = int(t * beats_per_sec) % 8
+		var freq = notes[(beat * 3 + track_id) % notes.size()]
+		var beat_t = fmod(t * beats_per_sec, 1.0)
+		var env = max(0.0, 1.0 - beat_t * 1.4)
+		var mix_val = sin(t * freq * 2.0 * PI) * env * 0.5
+		var int_val = int(clamp(mix_val * 24000.0, -30000.0, 30000.0))
+
+		if int_val < 0:
+			int_val += 65536
+		bytes.set(i * 2, int_val & 0xFF)
+		bytes.set(i * 2 + 1, (int_val >> 8) & 0xFF)
+
+	return create_sample_from_pcm(bytes, true)
+

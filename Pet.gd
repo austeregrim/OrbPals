@@ -419,8 +419,43 @@ func _physics_process(delta):
 		facing_dir = -1.0
 	elif center_vel.x > 15.0:
 		facing_dir = 1.0
+
+	# Motion footstep SFX timer for smooth movement & non-limbed breeds
+	if center_vel.length() > 25.0 and current_state != State.SLEEPING and current_state != State.SICK:
+		footstep_timer += delta
+		var interval = 0.32 if center_vel.length() < 110.0 else 0.16
+		if footstep_timer >= interval:
+			footstep_timer = 0.0
+			if AudioManager:
+				if center_vel.length() < 110.0:
+					AudioManager.play_footstep_walk()
+				else:
+					AudioManager.play_footstep_run()
+
+	# Stuffed Animal persistent ownership & guarding
+	var main_ref = get_parent()
+	if main_ref and ("active_items" in main_ref):
+		for item in main_ref.active_items:
+			if is_instance_valid(item) and item.get("toy_type") == "stuffed_animal":
+				var o_id = item.get("owner_pet_id")
+				if o_id == "" or o_id == pet_id:
+					item.set("owner_pet_id", pet_id)
+					item.set("owner_pet", self)
+					item.set("is_being_guarded", true)
+					guarded_toy = item
+
+	if is_instance_valid(guarded_toy):
+		var intruder = _find_closest_other_pet()
+		if is_instance_valid(intruder):
+			var dist_to_stuffie = intruder.global_position.distance_to(guarded_toy.global_position)
+			if dist_to_stuffie < 68.0:
+				if AudioManager and randf() < 0.08:
+					AudioManager.play_pet_emotion(self, "growl")
+				var shove_dir = (intruder.global_position - guarded_toy.global_position).normalized()
+				intruder.center_vel += shove_dir * 180.0
 		
 	if segment_positions.size() > 0:
+
 		segment_positions[0] = global_position
 		for i in range(1, segment_positions.size()):
 			var p_target = segment_positions[i - 1]
@@ -506,6 +541,13 @@ func _physics_process(delta):
 						foot_step_progress[l_idx] = 0.0
 						foot_step_start[l_idx] = foot_positions[l_idx]
 						
+						# Play footstep audio on step start
+						if AudioManager:
+							if center_vel.length() > 110.0:
+								AudioManager.play_footstep_run()
+							else:
+								AudioManager.play_footstep_walk()
+
 						# Overshoot target in walking direction
 						var overshoot = center_vel.normalized() * 18.0
 						foot_step_target[l_idx] = desired_foot + overshoot
@@ -523,6 +565,7 @@ func _physics_process(delta):
 				# Planted foot: remains locked to global floor position or slowly drifts to rest if stopped
 				if center_vel.length() < 10.0:
 					foot_positions[l_idx] = lerp(foot_positions[l_idx], desired_foot, 0.15)
+
 			
 	# 6. Update eye tracking and face positions
 	_update_face_logic(delta)
