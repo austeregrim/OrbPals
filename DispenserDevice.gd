@@ -14,19 +14,16 @@ onready var food_btn = $Panel/Margin/VBox/ItemRow/FoodBtn
 onready var cookie_btn = $Panel/Margin/VBox/ItemRow/CookieBtn
 onready var ball_btn = $Panel/Margin/VBox/ItemRow/BallBtn
 onready var mop_btn = $Panel/Margin/VBox/ItemRow/MopBtn
+onready var recall_all_btn = $Panel/Margin/VBox/PetHeaderRow/RecallAllBtn
 onready var exit_btn = $Panel/Margin/VBox/TitleBar/ExitBtn
+onready var confirm_dialog = $ConfirmationDialog
+onready var tab_ear = $PanelTabEar
+onready var roster_vbox = $Panel/Margin/VBox/RosterScroll/RosterVBox
+
 var bottle_btn = null
 var chew_btn = null
 var stuffie_btn = null
 var boombox_btn = null
-
-onready var breed_dropdown = $Panel/Margin/VBox/BreedRow/BreedDropdown
-onready var summon_btn = $Panel/Margin/VBox/PetActionRow/SummonBtn
-onready var recall_btn = $Panel/Margin/VBox/PetActionRow/RecallBtn
-onready var recall_all_btn = $Panel/Margin/VBox/PetActionRow/RecallAllBtn
-onready var euthanize_btn = $Panel/Margin/VBox/EuthanizeRow/EuthanizeBtn
-onready var confirm_dialog = $ConfirmationDialog
-onready var tab_ear = $PanelTabEar
 
 var is_undocked = false
 var is_dragging = false
@@ -39,65 +36,62 @@ var undock_btn = null
 
 func _ready():
 	_ensure_scroll_container()
+	_setup_icon_btn(food_btn, "res://assets/food_bowl.png", "Dispense Food Bowl")
+	_setup_icon_btn(cookie_btn, "res://assets/food_treat.png", "Dispense Cookie Treat")
+	_setup_icon_btn(ball_btn, "res://assets/toy_ball.png", "Dispense Bouncy Ball")
+	_setup_icon_btn(mop_btn, "res://assets/mop.png", "Use Mop Tool")
+
 	food_btn.connect("pressed", self, "_on_food_pressed")
 	cookie_btn.connect("pressed", self, "_on_cookie_pressed")
 	ball_btn.connect("pressed", self, "_on_ball_pressed")
 	mop_btn.connect("pressed", self, "_on_mop_pressed")
+
 	if exit_btn:
 		exit_btn.connect("pressed", self, "_on_exit_pressed")
-	
+
 	if vbox and vbox.has_node("ItemRow"):
 		var item_row = vbox.get_node("ItemRow")
 		bottle_btn = Button.new()
 		bottle_btn.name = "BottleBtn"
-		bottle_btn.text = "Bottle"
-		bottle_btn.hint_tooltip = "Dispense Feeding Bottle"
-		bottle_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		_setup_icon_btn(bottle_btn, "res://assets/food_bottle.png", "Dispense Feeding Bottle")
 		bottle_btn.connect("pressed", self, "_on_bottle_pressed")
 		item_row.add_child(bottle_btn)
 		item_row.move_child(bottle_btn, 1)
 
-		# Add second row of items for Chew Toy, Stuffie, and Boombox
 		var item_row2 = HBoxContainer.new()
 		item_row2.name = "ItemRow2"
+		item_row2.rect_min_size = Vector2(0, 44)
+		item_row2.add_constant_override("separation", 6)
 
 		chew_btn = Button.new()
 		chew_btn.name = "ChewBtn"
-		chew_btn.text = "Chew"
-		chew_btn.hint_tooltip = "Dispense Chew Toy"
-		chew_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		_setup_icon_btn(chew_btn, "res://assets/toy_chew.png", "Dispense Chew Toy")
 		chew_btn.connect("pressed", self, "_on_chew_pressed")
 		item_row2.add_child(chew_btn)
 
 		stuffie_btn = Button.new()
 		stuffie_btn.name = "StuffieBtn"
-		stuffie_btn.text = "Stuffie"
-		stuffie_btn.hint_tooltip = "Dispense Stuffed Animal"
-		stuffie_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		_setup_icon_btn(stuffie_btn, "res://assets/toy_bear.png", "Dispense Stuffed Animal")
 		stuffie_btn.connect("pressed", self, "_on_stuffie_pressed")
 		item_row2.add_child(stuffie_btn)
 
 		boombox_btn = Button.new()
 		boombox_btn.name = "BoomboxBtn"
-		boombox_btn.text = "Boombox"
-		boombox_btn.hint_tooltip = "Dispense Music Boombox"
-		boombox_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		_setup_icon_btn(boombox_btn, "res://assets/toy_radio.png", "Dispense Music Boombox")
 		boombox_btn.connect("pressed", self, "_on_boombox_pressed")
 		item_row2.add_child(boombox_btn)
 
 		vbox.add_child(item_row2)
 		vbox.move_child(item_row2, item_row.get_index() + 1)
 
+	if recall_all_btn:
+		recall_all_btn.connect("pressed", self, "_on_recall_all_pressed")
 
-	summon_btn.connect("pressed", self, "_on_summon_pressed")
-	recall_btn.connect("pressed", self, "_on_recall_pressed")
-	recall_all_btn.connect("pressed", self, "_on_recall_all_pressed")
-	euthanize_btn.connect("pressed", self, "_on_euthanize_pressed")
+	if confirm_dialog:
+		confirm_dialog.connect("confirmed", self, "_on_euthanize_confirmed")
 
-	confirm_dialog.connect("confirmed", self, "_on_euthanize_confirmed")
-	
 	$Panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	
+
 	if vbox and vbox.has_node("TitleBar"):
 		var tb = vbox.get_node("TitleBar")
 		tb.connect("gui_input", self, "_on_titlebar_gui_input")
@@ -111,11 +105,34 @@ func _ready():
 			tb.add_child(undock_btn)
 		if exit_btn:
 			tb.move_child(undock_btn, exit_btn.get_index())
-	
+
 	if tab_ear:
 		tab_ear.tab_id = "dispenser"
 		tab_ear.icon_text = "DISP"
 		tab_ear.connect("tab_clicked", self, "_on_tab_ear_clicked")
+
+func _setup_icon_btn(btn: Button, icon_path: String, tooltip: String):
+	if btn:
+		btn.rect_min_size = Vector2(44, 44)
+		btn.expand_icon = true
+		btn.text = ""
+		btn.hint_tooltip = tooltip
+		var tex = _load_texture_robust(icon_path)
+		if tex:
+			btn.icon = tex
+
+func _load_texture_robust(path: String) -> Texture:
+	if ResourceLoader.exists(path):
+		var res = load(path)
+		if res is Texture:
+			return res
+	var img = Image.new()
+	var err = img.load(path)
+	if err == OK:
+		var tex = ImageTexture.new()
+		tex.create_from_image(img, 7)
+		return tex
+	return null
 
 func toggle_undock():
 	is_undocked = not is_undocked
@@ -127,7 +144,6 @@ func toggle_undock():
 func _update_undock_button_ui():
 	if undock_btn:
 		undock_btn.text = "[Unpin]" if is_undocked else "[Pin]"
-
 
 func _on_tab_ear_clicked(tab_id: String):
 	emit_signal("tab_clicked", tab_id)
@@ -153,10 +169,92 @@ func _on_titlebar_gui_input(event):
 
 func populate_pet_roster(pet_list: Array):
 	available_pets = pet_list
-	breed_dropdown.clear()
+	if not roster_vbox:
+		roster_vbox = get_node_or_null("Panel/Margin/VBox/RosterScroll/RosterVBox")
+	if not roster_vbox:
+		return
+
+	for c in roster_vbox.get_children():
+		c.queue_free()
+
+	var main = get_parent()
+	var active_ids = []
+	if main and "active_pets" in main:
+		for ap in main.active_pets:
+			if is_instance_valid(ap):
+				active_ids.append(ap.pet_id)
+
 	for pet_info in available_pets:
+		var pid = pet_info.get("pet_id", "")
 		var pname = pet_info.get("pet_name", pet_info.get("breed_name", "Unknown"))
-		breed_dropdown.add_item(pname)
+		var raw_stage = str(pet_info.get("life_stage", "adult"))
+		var stage = raw_stage.capitalize()
+		var is_active = active_ids.has(pid)
+
+		var card = PanelContainer.new()
+		card.rect_min_size = Vector2(0, 44)
+
+		var hbox = HBoxContainer.new()
+		hbox.add_constant_override("separation", 6)
+
+		var info_vbox = VBoxContainer.new()
+		info_vbox.size_flags_horizontal = SIZE_EXPAND_FILL
+
+		var name_lbl = Label.new()
+		name_lbl.text = pname
+		name_lbl.add_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0))
+		info_vbox.add_child(name_lbl)
+
+		var stage_lbl = Label.new()
+		stage_lbl.text = stage
+		stage_lbl.add_color_override("font_color", Color(0.7, 0.85, 1.0, 0.8))
+		info_vbox.add_child(stage_lbl)
+
+		hbox.add_child(info_vbox)
+
+		var status_lbl = Label.new()
+		status_lbl.text = "[OUT]" if is_active else "[IN DISP]"
+		status_lbl.add_color_override("font_color", Color(0.4, 1.0, 0.4) if is_active else Color(0.6, 0.6, 0.6))
+		hbox.add_child(status_lbl)
+
+		var action_btn = Button.new()
+		action_btn.rect_min_size = Vector2(70, 32)
+		if is_active:
+			action_btn.text = "Recall"
+			action_btn.add_color_override("font_color", Color(1.0, 0.7, 0.4))
+			action_btn.connect("pressed", self, "_on_recall_card_pressed", [pet_info])
+		else:
+			action_btn.text = "Call Out"
+			action_btn.add_color_override("font_color", Color(0.4, 1.0, 0.5))
+			action_btn.connect("pressed", self, "_on_summon_card_pressed", [pet_info])
+		hbox.add_child(action_btn)
+
+		var del_btn = Button.new()
+		del_btn.text = "X"
+		del_btn.rect_min_size = Vector2(28, 32)
+		del_btn.add_color_override("font_color", Color(1.0, 0.3, 0.3))
+		del_btn.hint_tooltip = "Permanently delete/euthanize pet"
+		del_btn.connect("pressed", self, "_on_euthanize_card_pressed", [pet_info])
+		hbox.add_child(del_btn)
+
+		card.add_child(hbox)
+		roster_vbox.add_child(card)
+
+func _on_summon_card_pressed(pet_info: Dictionary):
+	if AudioManager: AudioManager.play_button_beep()
+	emit_signal("summon_pet", pet_info)
+
+func _on_recall_card_pressed(pet_info: Dictionary):
+	if AudioManager: AudioManager.play_button_beep()
+	emit_signal("recall_pet", pet_info)
+
+func _on_euthanize_card_pressed(pet_info: Dictionary):
+	if AudioManager: AudioManager.play_button_beep()
+	pending_euthanize_pet = pet_info
+	var pname = pending_euthanize_pet.get("pet_name", "this pet")
+	if confirm_dialog:
+		confirm_dialog.dialog_text = "WARNING\n\nAre you sure you want to send '%s' into the void?\nThis will PERMANENTLY DELETE its save file!" % pname
+		confirm_dialog.popup_centered()
 
 func _on_food_pressed():
 	if AudioManager: AudioManager.play_button_beep()
@@ -186,33 +284,9 @@ func _on_boombox_pressed():
 	if AudioManager: AudioManager.play_button_beep()
 	emit_signal("spawn_toy", get_nozzle_global_position(), "boombox")
 
-
-
-func _on_summon_pressed():
-	if AudioManager: AudioManager.play_button_beep()
-	var idx = breed_dropdown.selected
-	if idx >= 0 and idx < available_pets.size():
-		emit_signal("summon_pet", available_pets[idx])
-
-func _on_recall_pressed():
-	if AudioManager: AudioManager.play_button_beep()
-	var idx = breed_dropdown.selected
-	if idx >= 0 and idx < available_pets.size():
-		emit_signal("recall_pet", available_pets[idx])
-
 func _on_recall_all_pressed():
 	if AudioManager: AudioManager.play_button_beep()
 	emit_signal("recall_all_pets")
-
-func _on_euthanize_pressed():
-	if AudioManager: AudioManager.play_button_beep()
-	var idx = breed_dropdown.selected
-	if idx >= 0 and idx < available_pets.size():
-		pending_euthanize_pet = available_pets[idx]
-		var pname = pending_euthanize_pet.get("pet_name", "this pet")
-		confirm_dialog.dialog_text = "WARNING\n\nAre you sure you want to send '%s' into the void?\nThis will PERMANENTLY DELETE its save file!" % pname
-
-		confirm_dialog.popup_centered()
 
 func _on_euthanize_confirmed():
 	if pending_euthanize_pet != null:
@@ -223,12 +297,10 @@ func _on_exit_pressed():
 	get_tree().quit()
 
 func get_nozzle_global_position() -> Vector2:
-	# If drawer panel is open and visible on screen, use bottom of panel
 	var r = $Panel.get_global_rect()
 	if $Panel.visible and r.size.x > 10 and r.position.x >= -50 and r.position.x <= OS.window_size.x:
 		return r.position + Vector2(r.size.x / 2.0, r.size.y + 10.0)
 		
-	# Fallback: emerge directly from the side tab ear
 	if is_instance_valid(tab_ear):
 		var tab_r = tab_ear.get_tab_rect()
 		if tab_r.size.x > 0:
@@ -248,9 +320,9 @@ func _ensure_scroll_container():
 	var margin = get_node_or_null("Panel/Margin")
 	if not margin:
 		return
-	var vbox = margin.get_node_or_null("VBox")
-	if vbox and not vbox.get_parent() is ScrollContainer:
-		margin.remove_child(vbox)
+	var vbox_node = margin.get_node_or_null("VBox")
+	if vbox_node and not vbox_node.get_parent() is ScrollContainer:
+		margin.remove_child(vbox_node)
 		var scroll = ScrollContainer.new()
 		scroll.name = "ScrollContainer"
 		scroll.anchor_right = 1.0
@@ -259,6 +331,6 @@ func _ensure_scroll_container():
 		scroll.size_flags_vertical = SIZE_EXPAND_FILL
 		scroll.scroll_horizontal_enabled = false
 		margin.add_child(scroll)
-		scroll.add_child(vbox)
-		vbox.size_flags_horizontal = SIZE_EXPAND_FILL
-		vbox.size_flags_vertical = SIZE_EXPAND_FILL
+		scroll.add_child(vbox_node)
+		vbox_node.size_flags_horizontal = SIZE_EXPAND_FILL
+		vbox_node.size_flags_vertical = SIZE_EXPAND_FILL

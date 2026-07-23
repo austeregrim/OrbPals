@@ -418,12 +418,18 @@ func _physics_process(delta):
 		# Track time outside dispenser and progress life stages
 		if current_state != State.RETURNING_TO_DISPENSER and current_state != State.EMERGING_FROM_DISPENSER:
 			time_outside_dispenser_seconds += delta
+			var old_stage = life_stage
 			if life_stage == "infant" or life_stage == "hatchling":
 				if time_outside_dispenser_seconds >= 600.0: # 10 minutes real time
 					life_stage = "child"
 			elif life_stage == "child" or life_stage == "juvenile":
 				if time_outside_dispenser_seconds >= 2700.0: # 45 minutes total (35 mins as child)
 					life_stage = "adult"
+
+			if old_stage != life_stage:
+				var main = get_parent()
+				if main and main.has_method("update_pet_persistent_file"):
+					main.call("update_pet_persistent_file", self)
 
 			if center_vel.length() > 20.0:
 				weight = clamp(weight - delta * 0.00005, 0.7, 1.3)
@@ -2856,6 +2862,59 @@ func _spawn_poop():
 	var main = get_parent()
 	if main and "active_items" in main:
 		main.active_items.append(poop)
+
+func get_save_dict() -> Dictionary:
+	var d = {
+		"pet_id": pet_id,
+		"pet_name": pet_name,
+		"genetic_seed": genetic_seed,
+		"element_type_idx": element_type_idx,
+		"life_stage": life_stage,
+		"time_outside_dispenser_seconds": time_outside_dispenser_seconds,
+		"weight": weight,
+		"voice_version": voice_version,
+		"voice_pitch": voice_pitch,
+		"has_fur": has_fur,
+		"fur_length": fur_length,
+		"fur_color": fur_color.to_html() if (fur_color is Color) else "ffffff",
+		"has_antennae": has_antennae,
+		"antenna_length": antenna_length,
+		"antenna_color": antenna_color.to_html() if (antenna_color is Color) else "ffff00",
+		"foot_shape": foot_shape,
+		"wing_type": wing_type,
+		"wing_color": wing_color.to_html() if (wing_color is Color) else "ffffff",
+		"tail_type": tail_type,
+		"tail_color": tail_color.to_html() if (tail_color is Color) else "8e24aa",
+		"head_feature": head_feature,
+		"horn_color": horn_color.to_html() if (horn_color is Color) else "ffffaa",
+		"pattern_type": pattern_type,
+		"pattern_color": pattern_color.to_html() if (pattern_color is Color) else "7b1fa2",
+		"pupil_shape": pupil_shape,
+		"has_cheeks": has_cheeks,
+		"cheek_color": cheek_color.to_html() if (cheek_color is Color) else "f48fb1",
+		"glow_color": outline_color.to_html() if (outline_color is Color) else "ffffff"
+	}
+	if active_breed:
+		d["head_radius"] = active_breed.head_radius
+		d["num_segments"] = active_breed.num_segments
+		d["segment_spacing"] = active_breed.segment_spacing
+		d["has_limbs"] = active_breed.has_limbs
+		d["num_limbs"] = active_breed.num_limbs
+		d["eye_type"] = active_breed.eye_type
+		d["primary_color"] = active_breed.primary_color.to_html() if (active_breed.primary_color is Color) else "ab47bc"
+	if stats:
+		d["hunger"] = stats.hunger
+		d["energy"] = stats.energy
+		d["boredom"] = stats.boredom
+		d["affection"] = stats.affection
+		d["curiosity"] = stats.curiosity
+		d["agitation"] = stats.agitation
+		d["wellness"] = stats.wellness
+		d["toilet"] = stats.toilet
+		if stats.decay_modifiers:
+			d["decay_modifiers"] = stats.decay_modifiers
+	return d
+
 
 
 

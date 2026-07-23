@@ -876,10 +876,48 @@ func is_over_trash_can(pos: Vector2) -> bool:
 
 func _on_pet_returned_to_box(arg1, arg2 = null):
 	var target_pet = arg2 if is_instance_valid(arg2) else (arg1 if (arg1 is Node and is_instance_valid(arg1)) else null)
-	if target_pet and active_pets.has(target_pet):
-		active_pets.erase(target_pet)
-	if is_instance_valid(target_pet):
+	if target_pet:
+		update_pet_persistent_file(target_pet)
+		if active_pets.has(target_pet):
+			active_pets.erase(target_pet)
 		target_pet.queue_free()
+	if is_instance_valid(dispenser_device):
+		dispenser_device.call("populate_pet_roster", pet_roster)
+
+func update_pet_persistent_file(pet):
+	if not is_instance_valid(pet):
+		return
+	var pid = pet.pet_id
+	if pid == "":
+		return
+	var file_path = "user://pets/" + pid + ".json"
+	var f = File.new()
+	var pet_dict = {}
+	if f.file_exists(file_path):
+		if f.open(file_path, File.READ) == OK:
+			var res = JSON.parse(f.get_as_text())
+			if res.error == OK and res.result is Dictionary:
+				pet_dict = res.result
+			f.close()
+	
+	if pet.has_method("get_save_dict"):
+		var updated_data = pet.get_save_dict()
+		for k in updated_data.keys():
+			pet_dict[k] = updated_data[k]
+	else:
+		pet_dict["life_stage"] = pet.life_stage
+		pet_dict["time_outside_dispenser_seconds"] = pet.time_outside_dispenser_seconds
+		pet_dict["weight"] = pet.weight
+
+	if f.open(file_path, File.WRITE) == OK:
+		f.store_string(JSON.print(pet_dict, "  "))
+		f.close()
+	
+	for i in range(pet_roster.size()):
+		if pet_roster[i].get("pet_id", "") == pid:
+			for k in pet_dict.keys():
+				pet_roster[i][k] = pet_dict[k]
+			break
 
 func _on_viewport_size_changed():
 	if Settings.play_pen_mode or OS.get_name() == "Android":
@@ -908,6 +946,7 @@ func save_active_pets():
 	var pet_list = []
 	for p in active_pets:
 		if is_instance_valid(p):
+			update_pet_persistent_file(p)
 			var p_dict = {
 				"pet_id": p.pet_id,
 				"pet_name": p.pet_name,
