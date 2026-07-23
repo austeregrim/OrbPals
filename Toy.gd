@@ -90,6 +90,8 @@ func apply_element(elem_name: String):
 	elif elem_name == "wind":
 		velocity.y -= 250.0
 
+var drag_history: Array = []
+
 func _physics_process(delta):
 	if elemental_timer > 0.0:
 		elemental_timer -= delta
@@ -106,13 +108,15 @@ func _physics_process(delta):
 		global_position = mouse_pos
 		velocity = Vector2.ZERO
 		
-		drag_positions.append(mouse_pos)
-		if drag_positions.size() > 5:
-			drag_positions.remove(0)
+		var now = OS.get_ticks_msec() * 0.001
+		drag_history.append({"pos": mouse_pos, "time": now})
+		while drag_history.size() > 0 and (now - drag_history[0].time) > 0.14:
+			drag_history.remove(0)
 			
 		prev_mouse_pos = mouse_pos
 	else:
 		if toy_type == "ball":
+
 			velocity.y += gravity * delta
 			global_position += velocity * delta
 			
@@ -238,16 +242,22 @@ func _input(event):
 				main.call("remove_item", self)
 			get_tree().set_input_as_handled()
 			return
-		if drag_positions.size() > 1:
-			var start_pos = drag_positions[0]
-			var end_pos = drag_positions[drag_positions.size() - 1]
-			velocity = (end_pos - start_pos) / (0.016 * drag_positions.size())
-			velocity = velocity.clamped(800.0)
 			
-			for pet in get_parent().get_children():
-				if is_instance_valid(pet) and pet.has_method("on_toy_thrown"):
-					pet.call("on_toy_thrown", self)
+		if drag_history.size() >= 2:
+			var oldest = drag_history[0]
+			var newest = drag_history[drag_history.size() - 1]
+			var dt = newest.time - oldest.time
+			if dt > 0.005:
+				var toss_vel = (newest.pos - oldest.pos) / dt
+				velocity = toss_vel * 1.15
+				velocity = velocity.clamped(1200.0)
+				
+				for pet in get_parent().get_children():
+					if is_instance_valid(pet) and pet.has_method("on_toy_thrown"):
+						pet.call("on_toy_thrown", self)
+		drag_history.clear()
 		get_tree().set_input_as_handled()
+
 
 # Chew Toy mechanics
 func chew_toy(amount: float):

@@ -111,6 +111,9 @@ var center_vel = Vector2.ZERO
 var is_dragging = false
 var drag_positions = []
 var prev_mouse_pos = Vector2.ZERO
+var stuffed_animal_spot: Vector2 = Vector2.ZERO
+var drag_history: Array = []
+
 
 # Interaction targets
 var target_item = null
@@ -214,7 +217,23 @@ func _ready():
 
 	_change_state(State.IDLE)
 
+func _get_or_create_stuffed_animal_spot() -> Vector2:
+	var bounds = _get_viewport_bounds()
+	var margin = 75.0
+	
+	if stuffed_animal_spot != Vector2.ZERO and bounds.has_point(stuffed_animal_spot):
+		return stuffed_animal_spot
+		
+	var spot_x = bounds.position.x + margin
+	if int(genetic_seed) % 2 == 1:
+		spot_x = bounds.end.x - margin
+	var spot_y = bounds.end.y - base_radius - 15.0
+	
+	stuffed_animal_spot = Vector2(spot_x, spot_y)
+	return stuffed_animal_spot
+
 func _physics_process(delta):
+
 	# 1. Decay drives if enabled
 	if decay_enabled:
 		var is_moving = (center_vel.length() > 10.0 or current_state == State.WANDER or current_state == State.CHASE_ITEM or current_state == State.PLAY_WITH_PET or current_state == State.DIGGING)
@@ -260,13 +279,15 @@ func _physics_process(delta):
 		global_position = mouse_pos
 		center_vel = Vector2.ZERO
 		
-		drag_positions.append(mouse_pos)
-		if drag_positions.size() > 5:
-			drag_positions.remove(0)
+		drag_history.append({"pos": mouse_pos, "time": now})
+		while drag_history.size() > 0 and (now - drag_history[0].time) > 0.14:
+			drag_history.remove(0)
+
 			
-		if prev_mouse_pos != Vector2.ZERO:
-			var dist_moved = mouse_pos.distance_to(prev_mouse_pos)
-			if dist_moved > 50.0:
+		var dist_moved = mouse_pos.distance_to(prev_mouse_pos) if prev_mouse_pos != Vector2.ZERO else 0.0
+		if stats:
+			if dist_moved > 15.0:
+				stats.affection = clamp(stats.affection - 0.05, 0.0, 100.0)
 				stats.agitation = clamp(stats.agitation + dist_moved * 0.008, 0.0, 100.0)
 			else:
 				stats.affection = clamp(stats.affection + 0.05, 0.0, 100.0)
@@ -444,7 +465,31 @@ func _physics_process(delta):
 					item.set("is_being_guarded", true)
 					guarded_toy = item
 
-	if is_instance_valid(guarded_toy):
+	if is_instance_valid(guarded_toy) and not guarded_toy.get("is_dragging"):
+		var target_spot = _get_or_create_stuffed_animal_spot()
+		var dist_from_spot = guarded_toy.global_position.distance_to(target_spot)
+		
+		# If moved away from designated spot (> 40px), owner pet carries it back!
+		if dist_from_spot > 40.0 and current_state != State.SICK and current_state != State.SLEEPING and current_state != State.RELIEVING_SELF:
+			var dist_to_toy = global_position.distance_to(guarded_toy.global_position)
+			if dist_to_toy > base_radius + 25.0:
+				target_wander_pos = guarded_toy.global_position
+				var dir = (guarded_toy.global_position - global_position).normalized()
+				center_vel = dir * 110.0
+			else:
+				# Carrying / dragging stuffed animal back to target_spot!
+				guarded_toy.global_position = lerp(guarded_toy.global_position, global_position + Vector2(10.0 * facing_dir, 0.0), 0.35)
+				target_wander_pos = target_spot
+				var dir = (target_spot - global_position).normalized()
+				center_vel = dir * 90.0
+				
+				if global_position.distance_to(target_spot) < 30.0:
+					guarded_toy.global_position = target_spot
+					guarded_toy.velocity = Vector2.ZERO
+					if AudioManager and randf() < 0.1:
+						AudioManager.play_pet_emotion(self, "giggle")
+
+		# Check for intruding pets near spot or stuffed animal
 		var intruder = _find_closest_other_pet()
 		if is_instance_valid(intruder):
 			var dist_to_stuffie = intruder.global_position.distance_to(guarded_toy.global_position)
@@ -453,6 +498,7 @@ func _physics_process(delta):
 					AudioManager.play_pet_emotion(self, "growl")
 				var shove_dir = (intruder.global_position - guarded_toy.global_position).normalized()
 				intruder.center_vel += shove_dir * 180.0
+
 		
 	if segment_positions.size() > 0:
 
@@ -605,15 +651,18 @@ func _input(event):
 	elif is_release and is_dragging:
 		is_dragging = false
 		prev_mouse_pos = Vector2.ZERO
-		if drag_positions.size() > 1:
-			var start_pos = drag_positions[0]
-			var end_pos = drag_positions[drag_positions.size() - 1]
-			var throw_vector = (end_pos - start_pos) / (0.016 * drag_positions.size())
-			center_vel = throw_vector.clamped(150.0)
-		else:
-			center_vel = Vector2.ZERO
+		if drag_history.size() >= 2:
+			var oldest = drag_history[0]
+			var newest = drag_history[drag_history.size() - 1]
+			var dt = newest.time - oldest.time
+			if dt > 0.005:
+				var toss_vel = (newest.pos - oldest.pos) / dt
+				center_vel = toss_vel * 1.15
+				center_vel = center_vel.clamped(900.0)
+		drag_history.clear()
 		is_falling = false
 		_change_state(State.WANDER)
+
 
 func get_click_polygon() -> PoolVector2Array:
 	var polygons = []

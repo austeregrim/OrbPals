@@ -50,6 +50,8 @@ export(float) var spoil_time = 300.0 # regular food spoils in 5 minutes
 
 var ContextMenuScene = preload("res://ContextMenu.tscn")
 
+var drag_history: Array = []
+
 func _physics_process(delta):
 	# Process spoiling (treats and bottles never spoil)
 	if not is_treat and not is_bottle and not is_spoiled:
@@ -60,17 +62,19 @@ func _physics_process(delta):
 
 	scale = Vector2.ONE
 	if is_dragging:
-		var mouse_pos = prev_mouse_pos if prev_mouse_pos != Vector2.ZERO else get_global_mouse_position()
+		var mouse_pos = get_global_mouse_position()
 		global_position = mouse_pos
 		velocity = Vector2.ZERO
 		
-		drag_positions.append(mouse_pos)
-		if drag_positions.size() > 5:
-			drag_positions.remove(0)
+		var now = OS.get_ticks_msec() * 0.001
+		drag_history.append({"pos": mouse_pos, "time": now})
+		while drag_history.size() > 0 and (now - drag_history[0].time) > 0.14:
+			drag_history.remove(0)
 	else:
 		# Float in space and drift with air friction
 		velocity *= 0.95
 		global_position += velocity * delta
+
 		
 		# Boundary bounce check
 		var vp_size = get_viewport().get_visible_rect().size if get_viewport() else OS.window_size
@@ -168,12 +172,17 @@ func _input(event):
 								return
 
 
-		if drag_positions.size() > 1:
-			var start_pos = drag_positions[0]
-			var end_pos = drag_positions[drag_positions.size() - 1]
-			velocity = (end_pos - start_pos) / (0.016 * drag_positions.size())
-			velocity = velocity.clamped(800.0)
+		if drag_history.size() >= 2:
+			var oldest = drag_history[0]
+			var newest = drag_history[drag_history.size() - 1]
+			var dt = newest.time - oldest.time
+			if dt > 0.005:
+				var toss_vel = (newest.pos - oldest.pos) / dt
+				velocity = toss_vel * 1.15
+				velocity = velocity.clamped(1200.0)
+		drag_history.clear()
 		get_tree().set_input_as_handled()
+
 
 func get_click_polygon() -> PoolVector2Array:
 	# Padded circle polygon for the passthrough region — covers item + margin

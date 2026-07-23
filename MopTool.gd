@@ -16,21 +16,25 @@ var ContextMenuScene = preload("res://ContextMenu.tscn")
 func _ready():
 	velocity = Vector2(rand_range(-50.0, 50.0), -100.0)
 
+var drag_history: Array = []
+
 func _physics_process(delta):
+	scale = Vector2.ONE
 	if is_dragging:
-		var mouse_pos = prev_mouse_pos if prev_mouse_pos != Vector2.ZERO else get_global_mouse_position()
+		var mouse_pos = get_global_mouse_position()
 		global_position = mouse_pos
 		velocity = Vector2.ZERO
 		
-		# Clean messes near mop while dragging
+		var now = OS.get_ticks_msec() * 0.001
+		drag_history.append({"pos": mouse_pos, "time": now})
+		while drag_history.size() > 0 and (now - drag_history[0].time) > 0.14:
+			drag_history.remove(0)
+			
 		_clean_messes_in_radius()
-		
-		drag_positions.append(mouse_pos)
-		if drag_positions.size() > 5:
-			drag_positions.remove(0)
 	else:
-		velocity.y += gravity * delta
+		velocity *= 0.92
 		global_position += velocity * delta
+
 		
 		var vp_size = OS.window_size
 		if get_viewport():
@@ -120,12 +124,17 @@ func _input(event):
 				main.call("remove_item", self)
 			get_tree().set_input_as_handled()
 			return
-		if drag_positions.size() > 1:
-			var start_pos = drag_positions[0]
-			var end_pos = drag_positions[drag_positions.size() - 1]
-			velocity = (end_pos - start_pos) / (0.016 * drag_positions.size())
-			velocity = velocity.clamped(600.0)
+		if drag_history.size() >= 2:
+			var oldest = drag_history[0]
+			var newest = drag_history[drag_history.size() - 1]
+			var dt = newest.time - oldest.time
+			if dt > 0.005:
+				var toss_vel = (newest.pos - oldest.pos) / dt
+				velocity = toss_vel * 1.15
+				velocity = velocity.clamped(1000.0)
+		drag_history.clear()
 		get_tree().set_input_as_handled()
+
 
 func get_click_polygon() -> PoolVector2Array:
 	var poly = PoolVector2Array()
