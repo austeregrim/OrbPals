@@ -170,22 +170,23 @@ func synthesize_sound(params: Dictionary) -> AudioStreamSample:
 func play_footstep_walk():
 	if not sample_cache.has("footstep_walk"):
 		sample_cache["footstep_walk"] = synthesize_sound({
-			"duration": 0.12, "wave_type": "square",
-			"freq_start": 280.0, "freq_end": 80.0,
-			"attack": 0.005, "decay": 0.115,
-			"noise_ratio": 0.5, "volume": 0.95
+			"duration": 0.08, "wave_type": "noise",
+			"freq_start": 1400.0, "freq_end": 950.0,
+			"attack": 0.01, "decay": 0.07,
+			"noise_ratio": 0.9, "volume": 0.35
 		})
-	play_stream(sample_cache["footstep_walk"], 1.0, rand_range(0.92, 1.08))
+	play_stream(sample_cache["footstep_walk"], 0.45, rand_range(0.95, 1.05))
 
 func play_footstep_run():
 	if not sample_cache.has("footstep_run"):
 		sample_cache["footstep_run"] = synthesize_sound({
-			"duration": 0.08, "wave_type": "square",
-			"freq_start": 380.0, "freq_end": 110.0,
-			"attack": 0.003, "decay": 0.077,
-			"noise_ratio": 0.3, "volume": 1.0
+			"duration": 0.045, "wave_type": "triangle",
+			"freq_start": 1750.0, "freq_end": 1200.0,
+			"attack": 0.002, "decay": 0.038,
+			"noise_ratio": 0.45, "volume": 0.45
 		})
-	play_stream(sample_cache["footstep_run"], 1.0, rand_range(0.95, 1.15))
+	play_stream(sample_cache["footstep_run"], 0.55, rand_range(0.96, 1.08))
+
 
 func play_digging():
 	if not sample_cache.has("digging"):

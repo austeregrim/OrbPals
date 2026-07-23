@@ -56,16 +56,26 @@ func get_depth_scale(z: float) -> float:
 var ContextMenuScene = preload("res://ContextMenu.tscn")
 
 func _ready():
-	velocity = Vector2(rand_range(-150.0, 150.0), -100.0)
-	if toy_type == "boombox":
-		radius = 24.0
-		bounce = 0.3
+	if toy_type == "ball":
+		radius = 18.0
+		gravity = 350.0
+		bounce = 0.75
+		velocity = Vector2(rand_range(-150.0, 150.0), -100.0)
 	elif toy_type == "chew":
 		radius = 16.0
-		bounce = 0.4
+		gravity = 0.0
+		bounce = 0.0
+		velocity = Vector2.ZERO
 	elif toy_type == "stuffed_animal":
 		radius = 18.0
-		bounce = 0.35
+		gravity = 0.0
+		bounce = 0.0
+		velocity = Vector2.ZERO
+	elif toy_type == "boombox":
+		radius = 24.0
+		gravity = 0.0
+		bounce = 0.0
+		velocity = Vector2.ZERO
 
 func apply_element(elem_name: String):
 	elemental_state = elem_name
@@ -102,80 +112,83 @@ func _physics_process(delta):
 			
 		prev_mouse_pos = mouse_pos
 	else:
-		velocity.y += gravity * delta
-		global_position += velocity * delta
-		
-		var play_bounce_sfx = false
-		
-		# Floor bounce
-		var vp_size = OS.window_size
-		if get_viewport():
-			vp_size = get_viewport().get_visible_rect().size
-		var floor_y = vp_size.y - radius
-		if global_position.y >= floor_y:
-			if abs(velocity.y) > 50.0: play_bounce_sfx = true
-			global_position.y = floor_y
-			velocity.y = -velocity.y * bounce
-			if elemental_state == "ice":
-				velocity.x *= 0.998
-			else:
-				velocity.x *= 0.95
+		if toy_type == "ball":
+			velocity.y += gravity * delta
+			global_position += velocity * delta
 			
-		# Ceiling bounce
-		var ceiling_y = radius
-		if global_position.y <= ceiling_y:
-			if abs(velocity.y) > 50.0: play_bounce_sfx = true
-			global_position.y = ceiling_y
-			velocity.y = -velocity.y * bounce
-
-		# Wall bounce
-		if global_position.x <= radius:
-			if abs(velocity.x) > 50.0: play_bounce_sfx = true
-			global_position.x = radius
-			velocity.x = -velocity.x * bounce
-		elif global_position.x >= vp_size.x - radius:
-			if abs(velocity.x) > 50.0: play_bounce_sfx = true
-			global_position.x = vp_size.x - radius
-			velocity.x = -velocity.x * bounce
+			var play_bounce_sfx = false
 			
-		# Desktop Window Bounces
-		var main = get_parent()
-		if main and "desktop_window_manager" in main and is_instance_valid(main.desktop_window_manager):
-			var rects = main.desktop_window_manager.get_window_rects()
-			for rect in rects:
-				var expanded = rect.grow(radius)
-				if expanded.has_point(global_position):
-					var dist_left = abs(global_position.x - rect.position.x)
-					var dist_right = abs(global_position.x - rect.end.x)
-					var dist_top = abs(global_position.y - rect.position.y)
-					var dist_bottom = abs(global_position.y - rect.end.y)
-					
-					var min_dist = min(min(dist_left, dist_right), min(dist_top, dist_bottom))
-					if min_dist == dist_top and velocity.y > 0:
-						if abs(velocity.y) > 50.0: play_bounce_sfx = true
-						global_position.y = rect.position.y - radius
-						velocity.y = -velocity.y * bounce
-						velocity.x *= 0.95
-					elif min_dist == dist_bottom and velocity.y < 0:
-						if abs(velocity.y) > 50.0: play_bounce_sfx = true
-						global_position.y = rect.end.y + radius
-						velocity.y = -velocity.y * bounce
-					elif min_dist == dist_left and velocity.x > 0:
-						if abs(velocity.x) > 50.0: play_bounce_sfx = true
-						global_position.x = rect.position.x - radius
-						velocity.x = -velocity.x * bounce
-					elif min_dist == dist_right and velocity.x < 0:
-						if abs(velocity.x) > 50.0: play_bounce_sfx = true
-						global_position.x = rect.end.x + radius
-						velocity.x = -velocity.x * bounce
-
-		if play_bounce_sfx and AudioManager:
-			if toy_type == "ball":
-				AudioManager.play_ball_bounce()
-			elif toy_type == "boombox":
-				AudioManager.play_boombox_hit()
+			# Floor bounce
+			var vp_size = OS.window_size
+			if get_viewport():
+				vp_size = get_viewport().get_visible_rect().size
+			var floor_y = vp_size.y - radius
+			if global_position.y >= floor_y:
+				if abs(velocity.y) > 50.0: play_bounce_sfx = true
+				global_position.y = floor_y
+				velocity.y = -velocity.y * bounce
+				if elemental_state == "ice":
+					velocity.x *= 0.998
+				else:
+					velocity.x *= 0.95
 				
+			# Ceiling bounce
+			var ceiling_y = radius
+			if global_position.y <= ceiling_y:
+				if abs(velocity.y) > 50.0: play_bounce_sfx = true
+				global_position.y = ceiling_y
+				velocity.y = -velocity.y * bounce
+
+			# Wall bounce
+			if global_position.x <= radius:
+				if abs(velocity.x) > 50.0: play_bounce_sfx = true
+				global_position.x = radius
+				velocity.x = -velocity.x * bounce
+			elif global_position.x >= vp_size.x - radius:
+				if abs(velocity.x) > 50.0: play_bounce_sfx = true
+				global_position.x = vp_size.x - radius
+				velocity.x = -velocity.x * bounce
+
+			# Desktop Window Bounces for Ball
+			var main = get_parent()
+			if main and "desktop_window_manager" in main and is_instance_valid(main.desktop_window_manager):
+				var rects = main.desktop_window_manager.get_window_rects()
+				for rect in rects:
+					var expanded = rect.grow(radius)
+					if expanded.has_point(global_position):
+						var dist_left = abs(global_position.x - rect.position.x)
+						var dist_right = abs(global_position.x - rect.end.x)
+						var dist_top = abs(global_position.y - rect.position.y)
+						var dist_bottom = abs(global_position.y - rect.end.y)
+						
+						var min_dist = min(min(dist_left, dist_right), min(dist_top, dist_bottom))
+						if min_dist == dist_top and velocity.y > 0:
+							if abs(velocity.y) > 50.0: play_bounce_sfx = true
+							global_position.y = rect.position.y - radius
+							velocity.y = -velocity.y * bounce
+							velocity.x *= 0.95
+						elif min_dist == dist_bottom and velocity.y < 0:
+							if abs(velocity.y) > 50.0: play_bounce_sfx = true
+							global_position.y = rect.end.y + radius
+							velocity.y = -velocity.y * bounce
+						elif min_dist == dist_left and velocity.x > 0:
+							if abs(velocity.x) > 50.0: play_bounce_sfx = true
+							global_position.x = rect.position.x - radius
+							velocity.x = -velocity.x * bounce
+						elif min_dist == dist_right and velocity.x < 0:
+							if abs(velocity.x) > 50.0: play_bounce_sfx = true
+							global_position.x = rect.end.x + radius
+							velocity.x = -velocity.x * bounce
+
+			if play_bounce_sfx and AudioManager:
+				AudioManager.play_ball_bounce()
+		else:
+			# Non-ball toys (Chew, Stuffed Animal, Boombox) remain where placed on screen
+			global_position += velocity * delta
+			velocity *= 0.8
+
 	update()
+
 
 func _input(event):
 	var touch_pos = Vector2.ZERO
