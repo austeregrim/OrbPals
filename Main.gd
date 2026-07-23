@@ -470,8 +470,9 @@ func load_inventory():
 
 func summon_pet(pet_info: Dictionary):
 	var pid = pet_info.get("pet_id", "")
+	var pname = pet_info.get("pet_name", "")
 	for existing in active_pets:
-		if is_instance_valid(existing) and existing.pet_id == pid:
+		if is_instance_valid(existing) and ((pid != "" and existing.pet_id == pid) or (pname != "" and existing.pet_name.to_lower() == pname.to_lower())):
 			return # Already active!
 
 	var new_pet = PetScene.instance()
@@ -490,14 +491,18 @@ func summon_pet(pet_info: Dictionary):
 	if is_instance_valid(debug_panel) and debug_panel.visible:
 		debug_panel.call("setup", new_pet)
 
+	call_deferred("refresh_dispenser_roster")
+
 func recall_pet(pet_info: Dictionary):
 	var pid = pet_info.get("pet_id", "")
+	var pname = pet_info.get("pet_name", "")
 	for target_pet in active_pets:
-		if is_instance_valid(target_pet) and target_pet.pet_id == pid:
+		if is_instance_valid(target_pet) and ((pid != "" and target_pet.pet_id == pid) or (pname != "" and target_pet.pet_name.to_lower() == pname.to_lower())):
 			var nozzle_pos = dispenser_device.get_nozzle_global_position() if is_instance_valid(dispenser_device) else Vector2(OS.window_size.x / 2.0, 150.0)
 			if target_pet.has_method("return_to_dispenser"):
 				target_pet.call("return_to_dispenser", nozzle_pos, target_pet.active_breed)
 			break
+	call_deferred("refresh_dispenser_roster")
 
 func recall_all_pets():
 	var nozzle_pos = dispenser_device.get_nozzle_global_position() if is_instance_valid(dispenser_device) else Vector2(OS.window_size.x / 2.0, 150.0)
@@ -505,6 +510,11 @@ func recall_all_pets():
 		if is_instance_valid(target_pet):
 			if target_pet.has_method("return_to_dispenser"):
 				target_pet.call("return_to_dispenser", nozzle_pos, target_pet.active_breed)
+	call_deferred("refresh_dispenser_roster")
+
+func refresh_dispenser_roster():
+	if is_instance_valid(dispenser_device):
+		dispenser_device.call("populate_pet_roster", pet_roster)
 
 func open_genetic_builder():
 	toggle_drawer_panel("genetics")

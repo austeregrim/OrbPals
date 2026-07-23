@@ -179,23 +179,32 @@ func populate_pet_roster(pet_list: Array):
 
 	var main = get_parent()
 	var active_ids = []
+	var active_names = []
 	if main and "active_pets" in main:
 		for ap in main.active_pets:
 			if is_instance_valid(ap):
-				active_ids.append(ap.pet_id)
+				if ap.pet_id != "":
+					active_ids.append(ap.pet_id)
+				if ap.pet_name != "":
+					active_names.append(ap.pet_name.to_lower())
 
 	for pet_info in available_pets:
 		var pid = pet_info.get("pet_id", "")
 		var pname = pet_info.get("pet_name", pet_info.get("breed_name", "Unknown"))
 		var raw_stage = str(pet_info.get("life_stage", "adult"))
 		var stage = raw_stage.capitalize()
-		var is_active = active_ids.has(pid)
+		
+		var is_active = false
+		if pid != "" and active_ids.has(pid):
+			is_active = true
+		elif pname != "" and active_names.has(pname.to_lower()):
+			is_active = true
 
 		var card = PanelContainer.new()
-		card.rect_min_size = Vector2(0, 44)
+		card.rect_min_size = Vector2(0, 48)
 
 		var hbox = HBoxContainer.new()
-		hbox.add_constant_override("separation", 6)
+		hbox.add_constant_override("separation", 8)
 
 		var info_vbox = VBoxContainer.new()
 		info_vbox.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -206,34 +215,59 @@ func populate_pet_roster(pet_list: Array):
 		info_vbox.add_child(name_lbl)
 
 		var stage_lbl = Label.new()
-		stage_lbl.text = stage
+		stage_lbl.text = "Stage: " + stage
 		stage_lbl.add_color_override("font_color", Color(0.7, 0.85, 1.0, 0.8))
 		info_vbox.add_child(stage_lbl)
 
 		hbox.add_child(info_vbox)
 
-		var status_lbl = Label.new()
-		status_lbl.text = "[OUT]" if is_active else "[IN DISP]"
-		status_lbl.add_color_override("font_color", Color(0.4, 1.0, 0.4) if is_active else Color(0.6, 0.6, 0.6))
-		hbox.add_child(status_lbl)
+		# 3-Year-Old Friendly Visual Status Badge (Sun / Playing vs House / Home)
+		var status_badge = PanelContainer.new()
+		status_badge.rect_min_size = Vector2(80, 32)
+		var badge_style = StyleBoxFlat.new()
+		badge_style.set_corner_radius_all(6)
+		badge_style.content_margin_left = 6
+		badge_style.content_margin_right = 6
+		badge_style.content_margin_top = 4
+		badge_style.content_margin_bottom = 4
 
-		var action_btn = Button.new()
-		action_btn.rect_min_size = Vector2(70, 32)
+		var status_lbl = Label.new()
+		status_lbl.align = Label.ALIGN_CENTER
+		status_lbl.valign = Label.VALIGN_CENTER
+
 		if is_active:
-			action_btn.text = "Recall"
-			action_btn.add_color_override("font_color", Color(1.0, 0.7, 0.4))
+			badge_style.bg_color = Color(0.15, 0.45, 0.2, 0.85)
+			status_lbl.text = "☀️ Playing"
+			status_lbl.add_color_override("font_color", Color(0.6, 1.0, 0.6))
+		else:
+			badge_style.bg_color = Color(0.2, 0.25, 0.4, 0.85)
+			status_lbl.text = "🏠 Home"
+			status_lbl.add_color_override("font_color", Color(0.75, 0.85, 1.0))
+
+		status_badge.add_stylebox_override("panel", badge_style)
+		status_badge.add_child(status_lbl)
+		hbox.add_child(status_badge)
+
+		# Action Button
+		var action_btn = Button.new()
+		action_btn.rect_min_size = Vector2(85, 32)
+		if is_active:
+			action_btn.text = "🏠 Recall"
+			action_btn.hint_tooltip = "Send %s back to dispenser" % pname
+			action_btn.add_color_override("font_color", Color(1.0, 0.8, 0.5))
 			action_btn.connect("pressed", self, "_on_recall_card_pressed", [pet_info])
 		else:
-			action_btn.text = "Call Out"
-			action_btn.add_color_override("font_color", Color(0.4, 1.0, 0.5))
+			action_btn.text = "🟢 Call Out"
+			action_btn.hint_tooltip = "Call %s out into room" % pname
+			action_btn.add_color_override("font_color", Color(0.5, 1.0, 0.6))
 			action_btn.connect("pressed", self, "_on_summon_card_pressed", [pet_info])
 		hbox.add_child(action_btn)
 
 		var del_btn = Button.new()
 		del_btn.text = "X"
 		del_btn.rect_min_size = Vector2(28, 32)
-		del_btn.add_color_override("font_color", Color(1.0, 0.3, 0.3))
-		del_btn.hint_tooltip = "Permanently delete/euthanize pet"
+		del_btn.add_color_override("font_color", Color(1.0, 0.35, 0.35))
+		del_btn.hint_tooltip = "Permanently delete/euthanize %s" % pname
 		del_btn.connect("pressed", self, "_on_euthanize_card_pressed", [pet_info])
 		hbox.add_child(del_btn)
 
