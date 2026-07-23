@@ -60,6 +60,15 @@ func _ready():
 
 	get_viewport().connect("size_changed", self, "_on_viewport_size_changed")
 	apply_window_settings()
+	_raise_window_to_foreground_on_start()
+
+func _raise_window_to_foreground_on_start():
+	if OS.get_name() != "Android":
+		OS.set_window_always_on_top(true)
+		OS.move_window_to_foreground()
+		yield(get_tree().create_timer(0.4), "timeout")
+		OS.set_window_always_on_top(false)
+
 
 	# Instantiate panels upfront
 	_init_drawer_panels()
