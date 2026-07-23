@@ -80,7 +80,8 @@ export(float) var damping = 14.0
 export(float) var bounce_damping = 0.6
 export(float) var gravity = 300.0
 export(int) var num_points = 16
-export(bool) var show_debug_stuffie_spot: bool = true
+export(bool) var show_debug_stuffie_spot: bool = false
+
 
 var active_breed = null
 

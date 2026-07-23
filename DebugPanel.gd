@@ -84,6 +84,26 @@ func _ready():
 	speed_slider.value = 1.0
 	speed_slider.connect("value_changed", self, "_on_speed_changed")
 	decay_check.connect("toggled", self, "_on_decay_toggled")
+	_setup_stuffie_check()
+
+var stuffie_check: CheckBox = null
+
+func _setup_stuffie_check():
+	if vbox and not stuffie_check:
+		stuffie_check = CheckBox.new()
+		stuffie_check.name = "StuffieCheck"
+		stuffie_check.text = "Show Stuffie Target"
+		stuffie_check.pressed = false
+		stuffie_check.connect("toggled", self, "_on_stuffie_target_toggled")
+		vbox.add_child(stuffie_check)
+
+func _on_stuffie_target_toggled(button_pressed: bool):
+	var main = get_parent()
+	if main and ("active_pets" in main):
+		for pet in main.active_pets:
+			if is_instance_valid(pet):
+				pet.show_debug_stuffie_spot = button_pressed
+
 
 func toggle_undock():
 	is_undocked = not is_undocked
@@ -210,6 +230,10 @@ func update_ui_from_stats():
 	agitation_label.text = "Agitation: %.0f%%" % stats.agitation
 	wellness_slider.value = stats.wellness
 	wellness_label.text = "Wellness: %.0f%%" % stats.wellness
+
+	if stuffie_check:
+		stuffie_check.pressed = pet_ref.show_debug_stuffie_spot
+
 
 func _on_slider_value_changed(val, drive_name):
 	emit_signal("drive_changed", drive_name, val)
