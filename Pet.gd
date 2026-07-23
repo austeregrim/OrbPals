@@ -264,7 +264,68 @@ func _get_or_create_stuffed_animal_spot() -> Vector2:
 	return stuffed_animal_spot
 
 
+func _process_stuffed_animal_retrieval(delta, bounds) -> bool:
+	var main_ref = get_parent()
+	if main_ref and ("active_items" in main_ref):
+		for item in main_ref.active_items:
+			if is_instance_valid(item) and item.get("toy_type") == "stuffed_animal":
+				var o_id = item.get("owner_pet_id")
+				if o_id == "" or o_id == pet_id:
+					item.set("owner_pet_id", pet_id)
+					item.set("owner_pet", self)
+					item.set("is_being_guarded", true)
+					guarded_toy = item
+
+	if not is_instance_valid(guarded_toy) or guarded_toy.get("is_dragging"):
+		stuffie_carry_timer = 0.0
+		return false
+		
+	var target_spot = _get_or_create_stuffed_animal_spot()
+	var dist_from_spot = guarded_toy.global_position.distance_to(target_spot)
+	
+	# Guard against intruders
+	var intruder = _find_closest_other_pet()
+	if is_instance_valid(intruder):
+		var dist_to_stuffie = intruder.global_position.distance_to(guarded_toy.global_position)
+		if dist_to_stuffie < 68.0:
+			if AudioManager and randf() < 0.08:
+				AudioManager.play_pet_emotion(self, "growl")
+			var shove_dir = (intruder.global_position - guarded_toy.global_position).normalized()
+			intruder.center_vel += shove_dir * 180.0
+
+	# Check if stuffed animal needs returning
+	if dist_from_spot > 40.0 and current_state != State.SICK and current_state != State.SLEEPING and current_state != State.RELIEVING_SELF:
+		var dist_to_toy = global_position.distance_to(guarded_toy.global_position)
+		if dist_to_toy > base_radius + 25.0:
+			stuffie_carry_timer = 0.0
+			var nav_dir = (guarded_toy.global_position - global_position).normalized()
+			center_vel = nav_dir * 110.0
+		else:
+			stuffie_carry_timer += delta
+			var side_offset = Vector2((1.0 if center_vel.x >= 0 else -1.0) * (base_radius + 8.0), 0.0)
+			guarded_toy.global_position = lerp(guarded_toy.global_position, global_position + side_offset, 0.4)
+			
+			var nav_dir = (target_spot - global_position).normalized()
+			center_vel = nav_dir * 95.0
+			
+			var dist_to_target = global_position.distance_to(target_spot)
+			if dist_to_target < 45.0 or stuffie_carry_timer > 2.5:
+				var place_pos = global_position + side_offset
+				place_pos.x = clamp(place_pos.x, bounds.position.x + 30.0, bounds.end.x - 30.0)
+				place_pos.y = clamp(place_pos.y, bounds.position.y + 30.0, bounds.end.y - 30.0)
+				
+				guarded_toy.global_position = place_pos
+				guarded_toy.velocity = Vector2.ZERO
+				stuffed_animal_spot = place_pos
+				stuffie_carry_timer = 0.0
+				
+				if AudioManager and randf() < 0.2:
+					AudioManager.play_pet_emotion(self, "giggle")
+		return true
+	return false
+
 func _physics_process(delta):
+	var bounds = _get_viewport_bounds()
 
 	# 1. Decay drives if enabled
 	if decay_enabled:
@@ -280,11 +341,12 @@ func _physics_process(delta):
 			stats.elemental_energy = max(0.0, stats.elemental_energy - 35.0)
 			_manifest_elemental_power()
 		
-	# Check for state transitions based on drives
-	_evaluate_states(delta)
-	
-	# 2. Update state behaviors
-	_update_state_behavior(delta)
+	# Check stuffed animal retrieval before general state evaluation
+	var is_retrieving_stuffie = _process_stuffed_animal_retrieval(delta, bounds)
+	if not is_retrieving_stuffie:
+		_evaluate_states(delta)
+		_update_state_behavior(delta)
+
 	
 	# 3. Calculate target deformation offsets based on current drives & states
 	var spring_params = _update_deformed_targets(delta)
@@ -305,8 +367,9 @@ func _physics_process(delta):
 			i_clean += 1
 
 	# 4. Center node movement
-	var bounds = _get_viewport_bounds()
+	bounds = _get_viewport_bounds()
 	if is_dragging:
+
 		var mouse_pos = prev_mouse_pos if prev_mouse_pos != Vector2.ZERO else get_global_mouse_position()
 		global_position = mouse_pos
 		center_vel = Vector2.ZERO
@@ -485,66 +548,9 @@ func _physics_process(delta):
 				else:
 					AudioManager.play_footstep_run()
 
-	# Stuffed Animal persistent ownership & guarding
-	var main_ref = get_parent()
-	if main_ref and ("active_items" in main_ref):
-		for item in main_ref.active_items:
-			if is_instance_valid(item) and item.get("toy_type") == "stuffed_animal":
-				var o_id = item.get("owner_pet_id")
-				if o_id == "" or o_id == pet_id:
-					item.set("owner_pet_id", pet_id)
-					item.set("owner_pet", self)
-					item.set("is_being_guarded", true)
-					guarded_toy = item
-
-	if is_instance_valid(guarded_toy) and not guarded_toy.get("is_dragging"):
-		var target_spot = _get_or_create_stuffed_animal_spot()
-		var dist_from_spot = guarded_toy.global_position.distance_to(target_spot)
-		
-		# If moved away from designated spot (> 40px), owner pet carries it back!
-		if dist_from_spot > 40.0 and current_state != State.SICK and current_state != State.SLEEPING and current_state != State.RELIEVING_SELF:
-			var dist_to_toy = global_position.distance_to(guarded_toy.global_position)
-			if dist_to_toy > base_radius + 25.0:
-				stuffie_carry_timer = 0.0
-				target_wander_pos = guarded_toy.global_position
-				var dir = (guarded_toy.global_position - global_position).normalized()
-				center_vel = dir * 110.0
-			else:
-				# Carrying stuffed animal back towards target_spot
-				stuffie_carry_timer += delta
-				guarded_toy.global_position = lerp(guarded_toy.global_position, global_position + Vector2(10.0 * facing_dir, 0.0), 0.35)
-				target_wander_pos = target_spot
-				var dir = (target_spot - global_position).normalized()
-				center_vel = dir * 90.0
-				
-				var dist_to_target = global_position.distance_to(target_spot)
-				# Complete placement if close enough (< 45px) OR if stuck/blocked (> 2.5s)
-				if dist_to_target < 45.0 or stuffie_carry_timer > 2.5:
-					var place_pos = global_position + Vector2(12.0 * facing_dir, 0.0)
-					place_pos.x = clamp(place_pos.x, bounds.position.x + 30.0, bounds.end.x - 30.0)
-					place_pos.y = clamp(place_pos.y, bounds.position.y + 30.0, bounds.end.y - 30.0)
-					
-					guarded_toy.global_position = place_pos
-					guarded_toy.velocity = Vector2.ZERO
-					stuffed_animal_spot = place_pos
-					stuffie_carry_timer = 0.0
-					
-					if AudioManager and randf() < 0.2:
-						AudioManager.play_pet_emotion(self, "giggle")
-
-
-		# Check for intruding pets near spot or stuffed animal
-		var intruder = _find_closest_other_pet()
-		if is_instance_valid(intruder):
-			var dist_to_stuffie = intruder.global_position.distance_to(guarded_toy.global_position)
-			if dist_to_stuffie < 68.0:
-				if AudioManager and randf() < 0.08:
-					AudioManager.play_pet_emotion(self, "growl")
-				var shove_dir = (intruder.global_position - guarded_toy.global_position).normalized()
-				intruder.center_vel += shove_dir * 180.0
-
 		
 	if segment_positions.size() > 0:
+
 
 		segment_positions[0] = global_position
 		for i in range(1, segment_positions.size()):
