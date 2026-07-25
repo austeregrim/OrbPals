@@ -105,6 +105,11 @@ func _physics_process(delta):
 	scale = Vector2.ONE
 	if is_dragging:
 		var mouse_pos = get_global_mouse_position()
+		var is_mobile = (OS.get_name() == "Android" or OS.has_feature("mobile"))
+		var edge_margin = 35.0 if is_mobile else 20.0
+		var vp_size = get_viewport().get_visible_rect().size if get_viewport() else OS.window_size
+		mouse_pos.x = clamp(mouse_pos.x, edge_margin, vp_size.x - edge_margin)
+		mouse_pos.y = clamp(mouse_pos.y, edge_margin, vp_size.y - edge_margin)
 		global_position = mouse_pos
 		velocity = Vector2.ZERO
 		
@@ -126,7 +131,11 @@ func _physics_process(delta):
 			var vp_size = OS.window_size
 			if get_viewport():
 				vp_size = get_viewport().get_visible_rect().size
-			var floor_y = vp_size.y - radius
+			var is_mobile = (OS.get_name() == "Android" or OS.has_feature("mobile"))
+			var margin_y = 35.0 if is_mobile else radius
+			var margin_x = 25.0 if is_mobile else radius
+			
+			var floor_y = vp_size.y - margin_y
 			if global_position.y >= floor_y:
 				if abs(velocity.y) > 50.0: play_bounce_sfx = true
 				global_position.y = floor_y
@@ -137,20 +146,20 @@ func _physics_process(delta):
 					velocity.x *= 0.95
 				
 			# Ceiling bounce
-			var ceiling_y = radius
+			var ceiling_y = margin_y
 			if global_position.y <= ceiling_y:
 				if abs(velocity.y) > 50.0: play_bounce_sfx = true
 				global_position.y = ceiling_y
 				velocity.y = -velocity.y * bounce
 
 			# Wall bounce
-			if global_position.x <= radius:
+			if global_position.x <= margin_x:
 				if abs(velocity.x) > 50.0: play_bounce_sfx = true
-				global_position.x = radius
+				global_position.x = margin_x
 				velocity.x = -velocity.x * bounce
-			elif global_position.x >= vp_size.x - radius:
+			elif global_position.x >= vp_size.x - margin_x:
 				if abs(velocity.x) > 50.0: play_bounce_sfx = true
-				global_position.x = vp_size.x - radius
+				global_position.x = vp_size.x - margin_x
 				velocity.x = -velocity.x * bounce
 
 			# Desktop Window Bounces for Ball
@@ -201,6 +210,24 @@ func _physics_process(delta):
 			# Non-ball toys (Chew, Stuffed Animal, Boombox) remain where placed on screen
 			global_position += velocity * delta
 			velocity *= 0.8
+			
+			var vp_size = get_viewport().get_visible_rect().size if get_viewport() else OS.window_size
+			var is_mobile = (OS.get_name() == "Android" or OS.has_feature("mobile"))
+			var margin = 35.0 if is_mobile else max(radius, 25.0)
+			
+			if global_position.x < margin:
+				global_position.x = margin
+				velocity.x = 0.0
+			elif global_position.x > vp_size.x - margin:
+				global_position.x = vp_size.x - margin
+				velocity.x = 0.0
+				
+			if global_position.y < margin:
+				global_position.y = margin
+				velocity.y = 0.0
+			elif global_position.y > vp_size.y - margin:
+				global_position.y = vp_size.y - margin
+				velocity.y = 0.0
 
 	update()
 
@@ -227,7 +254,9 @@ func _input(event):
 		return
 
 	if is_press:
-		var grab_radius = radius * 1.8
+		var is_mobile = (OS.get_name() == "Android" or OS.has_feature("mobile"))
+		var touch_bonus = 25.0 if is_mobile else 10.0
+		var grab_radius = max(radius * 2.8, 48.0 + touch_bonus)
 		var dist = touch_pos.distance_to(global_position)
 		if dist <= grab_radius:
 			if is_right_click:

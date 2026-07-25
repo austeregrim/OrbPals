@@ -36,9 +36,11 @@ var undock_btn = null
 var master_slider: HSlider = null
 var sfx_slider: HSlider = null
 var music_slider: HSlider = null
+var pet_drawers_check: CheckBox = null
 
 func _ready():
 	_ensure_scroll_container()
+	_setup_drawer_toggle_ui()
 	save_btn.connect("pressed", self, "_on_save_pressed")
 	cancel_btn.connect("pressed", self, "_on_cancel_pressed")
 	
@@ -126,6 +128,29 @@ func _setup_audio_sliders():
 	vbox.add_child(section)
 	if vbox.has_node("BtnRow"):
 		vbox.move_child(section, vbox.get_node("BtnRow").get_index())
+
+func _setup_drawer_toggle_ui():
+	if not vbox:
+		return
+	if vbox.has_node("PetDrawersRow"):
+		return
+	var row = HBoxContainer.new()
+	row.name = "PetDrawersRow"
+	row.rect_min_size = Vector2(0, 32)
+	
+	var lbl = Label.new()
+	lbl.text = "Pets Can Open Drawers:"
+	lbl.size_flags_horizontal = SIZE_EXPAND_FILL
+	row.add_child(lbl)
+	
+	pet_drawers_check = CheckBox.new()
+	pet_drawers_check.name = "PetDrawersCheck"
+	pet_drawers_check.text = "Enable"
+	row.add_child(pet_drawers_check)
+	
+	vbox.add_child(row)
+	if vbox.has_node("BtnRow"):
+		vbox.move_child(row, vbox.get_node("BtnRow").get_index())
 
 
 func toggle_undock():
@@ -231,6 +256,10 @@ func setup_ui():
 		sfx_slider.value = Settings.sfx_volume
 	if music_slider:
 		music_slider.value = Settings.music_volume
+		
+	# 8. Pet Drawers Check
+	if pet_drawers_check:
+		pet_drawers_check.pressed = Settings.pets_can_open_drawers
 
 func _on_theme_color_changed(color: Color):
 	Settings.theme_color = color
@@ -250,6 +279,8 @@ func _on_save_pressed():
 	Settings.window_detection = window_detection_check.pressed
 	if old_age_death_check:
 		Settings.pet_mortality_enabled = old_age_death_check.pressed
+	if pet_drawers_check:
+		Settings.pets_can_open_drawers = pet_drawers_check.pressed
 		
 	if master_slider:
 		Settings.master_volume = master_slider.value

@@ -85,8 +85,10 @@ func _ready():
 	speed_slider.connect("value_changed", self, "_on_speed_changed")
 	decay_check.connect("toggled", self, "_on_decay_toggled")
 	_setup_stuffie_check()
+	_setup_sight_check()
 
 var stuffie_check: CheckBox = null
+var sight_check: CheckBox = null
 
 func _setup_stuffie_check():
 	if vbox and not stuffie_check:
@@ -97,12 +99,30 @@ func _setup_stuffie_check():
 		stuffie_check.connect("toggled", self, "_on_stuffie_target_toggled")
 		vbox.add_child(stuffie_check)
 
+func _setup_sight_check():
+	if vbox and not sight_check:
+		sight_check = CheckBox.new()
+		sight_check.name = "SightCheck"
+		sight_check.text = "Show Pet Sights"
+		sight_check.pressed = false
+		sight_check.connect("toggled", self, "_on_sight_toggled")
+		vbox.add_child(sight_check)
+
 func _on_stuffie_target_toggled(button_pressed: bool):
 	var main = get_parent()
 	if main and ("active_pets" in main):
 		for pet in main.active_pets:
 			if is_instance_valid(pet):
 				pet.show_debug_stuffie_spot = button_pressed
+				pet.update()
+
+func _on_sight_toggled(button_pressed: bool):
+	var main = get_parent()
+	if main and ("active_pets" in main):
+		for pet in main.active_pets:
+			if is_instance_valid(pet):
+				pet.show_debug_visual_range = button_pressed
+				pet.update()
 
 
 func toggle_undock():
@@ -233,6 +253,8 @@ func update_ui_from_stats():
 
 	if stuffie_check:
 		stuffie_check.pressed = pet_ref.show_debug_stuffie_spot
+	if sight_check:
+		sight_check.pressed = pet_ref.show_debug_visual_range
 
 
 func _on_slider_value_changed(val, drive_name):

@@ -1,6 +1,6 @@
 extends Node
 
-const VERSION = "1.1.0"
+const VERSION = "1.1.2"
 
 
 var play_pen_mode: bool = false
@@ -14,6 +14,7 @@ signal theme_color_changed(new_color)
 # Pet Aging & Mortality Settings
 var pet_aging_enabled: bool = true
 var pet_mortality_enabled: bool = true
+var pets_can_open_drawers: bool = true
 var decay_rate_scale: float = 1.0
 var debug_unlocked: bool = false
 
@@ -37,6 +38,7 @@ func load_settings():
 		window_detection = config.get_value("settings", "window_detection", true)
 		pet_aging_enabled = config.get_value("settings", "pet_aging_enabled", true)
 		pet_mortality_enabled = config.get_value("settings", "pet_mortality_enabled", true)
+		pets_can_open_drawers = config.get_value("settings", "pets_can_open_drawers", true)
 		decay_rate_scale = config.get_value("settings", "decay_rate_scale", 1.0)
 		master_volume = config.get_value("settings", "master_volume", 0.8)
 		sfx_volume = config.get_value("settings", "sfx_volume", 0.8)
@@ -53,6 +55,7 @@ func save_settings():
 	config.set_value("settings", "window_detection", window_detection)
 	config.set_value("settings", "pet_aging_enabled", pet_aging_enabled)
 	config.set_value("settings", "pet_mortality_enabled", pet_mortality_enabled)
+	config.set_value("settings", "pets_can_open_drawers", pets_can_open_drawers)
 	config.set_value("settings", "decay_rate_scale", decay_rate_scale)
 	config.set_value("settings", "master_volume", master_volume)
 	config.set_value("settings", "sfx_volume", sfx_volume)

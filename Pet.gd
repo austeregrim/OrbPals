@@ -33,6 +33,7 @@ var guarded_toy: Node = null
 # Pet Identity & Custom Data
 var pet_id: String = "grubby"
 var pet_name: String = "Grubby"
+export(float) var visual_range: float = 0.0 # 480.0 to 1440.0 (25% - 75% of 1920)
 var genetic_seed: int = 123456
 var life_stage: String = "adult" # hatchling, juvenile, adult, senior, deceased
 var age_seconds: float = 0.0
@@ -81,6 +82,7 @@ export(float) var bounce_damping = 0.6
 export(float) var gravity = 300.0
 export(int) var num_points = 16
 export(bool) var show_debug_stuffie_spot: bool = false
+export(bool) var show_debug_visual_range: bool = false
 export(bool) var has_snore_trait: bool = false
 
 
@@ -191,6 +193,11 @@ func _ready():
 	active_breed = breed_data
 	base_radius = active_breed.head_radius
 	
+	if visual_range <= 0.0:
+		var breed_str = active_breed.breed_name if active_breed else "default"
+		var h = abs((pet_id + "_" + pet_name + "_" + breed_str).hash())
+		visual_range = lerp(480.0, 1440.0, float(h % 10000) / 10000.0)
+	
 	# Initialize segment trail positions
 	segment_positions.clear()
 	for i in range(active_breed.num_segments):
@@ -267,16 +274,36 @@ func _get_or_create_stuffed_animal_spot() -> Vector2:
 	return stuffed_animal_spot
 
 
+func _find_closest_valid_pet_to_item(item: Node2D) -> Node:
+	var main_ref = get_parent()
+	if not main_ref or not ("active_pets" in main_ref):
+		return null
+	var closest_p = null
+	var min_d = 999999.0
+	for p in main_ref.active_pets:
+		if is_instance_valid(p) and p.get("current_state") != State.SLEEPING and p.get("current_state") != State.SICK:
+			var d = p.global_position.distance_to(item.global_position)
+			var vr = p.get("visual_range") if ("visual_range" in p and p.visual_range > 0.0) else 1000.0
+			if d <= vr and d < min_d:
+				min_d = d
+				closest_p = p
+	return closest_p
+
+
 func _process_stuffed_animal_retrieval(delta, bounds) -> bool:
 	var main_ref = get_parent()
 	if main_ref and ("active_items" in main_ref):
 		for item in main_ref.active_items:
 			if is_instance_valid(item) and item.get("toy_type") == "stuffed_animal":
 				var o_id = item.get("owner_pet_id")
-				if o_id == "" or o_id == pet_id:
-					item.set("owner_pet_id", pet_id)
-					item.set("owner_pet", self)
-					item.set("is_being_guarded", true)
+				if o_id == "" or o_id == null:
+					var closest_pet = _find_closest_valid_pet_to_item(item)
+					if closest_pet:
+						item.set("owner_pet_id", closest_pet.pet_id)
+						item.set("owner_pet", closest_pet)
+						item.set("is_being_guarded", true)
+						o_id = closest_pet.pet_id
+				if o_id == pet_id:
 					guarded_toy = item
 
 	if not is_instance_valid(guarded_toy) or guarded_toy.get("is_dragging"):
@@ -836,13 +863,15 @@ func on_item_removed(item):
 
 func on_toy_spawned(toy):
 	if current_state != State.SLEEPING and current_state != State.CHASE_ITEM:
-		target_item = toy
-		_change_state(State.CHASE_ITEM)
+		if is_instance_valid(toy) and global_position.distance_to(toy.global_position) <= visual_range:
+			target_item = toy
+			_change_state(State.CHASE_ITEM)
 
 func on_toy_thrown(toy):
-	if current_state != State.SLEEPING and stats.boredom < 90.0:
-		target_item = toy
-		_change_state(State.CHASE_ITEM)
+	if current_state != State.SLEEPING and stats and stats.boredom < 90.0:
+		if is_instance_valid(toy) and global_position.distance_to(toy.global_position) <= visual_range:
+			target_item = toy
+			_change_state(State.CHASE_ITEM)
 
 func _find_closest_item(is_food: bool) -> Node2D:
 	var main = get_parent()
@@ -863,7 +892,7 @@ func _find_closest_item(is_food: bool) -> Node2D:
 				matches = true
 			if matches:
 				var d = global_position.distance_to(item.global_position)
-				if d < min_dist:
+				if d <= visual_range and d < min_dist:
 					min_dist = d
 					closest = item
 	return closest
@@ -1206,7 +1235,7 @@ func _update_state_behavior(delta):
 					_change_state(State.DIGGING)
 					return
 				var bounds = _get_viewport_bounds()
-				if global_position.x >= bounds.end.x - 70.0 and stats and stats.knows_food_button < 1.0:
+				if Settings.pets_can_open_drawers and global_position.x >= bounds.end.x - 70.0 and stats and stats.knows_food_button < 1.0:
 					# Pet curiosity tab interaction across all panel tabs!
 					var main = get_parent()
 					if main:
@@ -1467,6 +1496,11 @@ func _update_state_behavior(delta):
 			if main and "dispenser_device" in main and is_instance_valid(main.dispenser_device):
 				nozzle_pos = main.dispenser_device.get_nozzle_global_position()
 				
+			if not Settings.pets_can_open_drawers:
+				self_dispense_phase = 0
+				_change_state(State.IDLE)
+				return
+				
 			if self_dispense_phase == 0:
 				# Step 1: Walk to side tab ear on right edge
 				var dir = (tab_pos - global_position).normalized()
@@ -1528,7 +1562,7 @@ func _update_state_behavior(delta):
 
 func _pick_random_wander_target():
 	var bounds = _get_viewport_bounds()
-	if stats and stats.knows_food_button < 1.0 and (stats.hunger < 75.0 or stats.curiosity < 75.0) and randf() < 0.5:
+	if Settings.pets_can_open_drawers and stats and stats.knows_food_button < 1.0 and (stats.hunger < 75.0 or stats.curiosity < 75.0) and randf() < 0.5:
 		var x = bounds.end.x - 30.0
 		var y = rand_range(bounds.position.y + 60.0, bounds.end.y - 60.0)
 		target_wander_pos = Vector2(x, y)
@@ -1998,6 +2032,18 @@ func _draw():
 		_draw_cheeks()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(transition_scale * s, transition_scale * s))
 	_draw_debug_stuffie_spot()
+	_draw_debug_visual_range()
+
+func _draw_debug_visual_range():
+	if not show_debug_visual_range or visual_range <= 0.0:
+		return
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var ring_col = Color(0.0, 0.85, 1.0, 0.6)
+	var fill_col = Color(0.0, 0.85, 1.0, 0.06)
+	draw_circle(Vector2.ZERO, visual_range, fill_col)
+	draw_arc(Vector2.ZERO, visual_range, 0, 2 * PI, 64, ring_col, 2.0)
+	var top_pt = Vector2(0, -visual_range)
+	draw_circle(top_pt, 4.0, ring_col)
 
 func _draw_debug_stuffie_spot():
 	if not show_debug_stuffie_spot or not is_instance_valid(guarded_toy) or stuffed_animal_spot == Vector2.ZERO:
@@ -2384,6 +2430,8 @@ func setup_custom_data(pet_dict: Dictionary):
 	pet_id = pet_dict.get("pet_id", pet_id)
 	pet_name = pet_dict.get("pet_name", pet_name)
 	genetic_seed = pet_dict.get("genetic_seed", 123456)
+	if pet_dict.has("visual_range"):
+		visual_range = float(pet_dict.get("visual_range"))
 	element_type_idx = pet_dict.get("element_type_idx", 0)
 	life_stage = pet_dict.get("life_stage", "adult")
 	time_outside_dispenser_seconds = pet_dict.get("time_outside_dispenser_seconds", 0.0)
@@ -2607,7 +2655,7 @@ func _find_closest_other_pet():
 	for p in main.active_pets:
 		if is_instance_valid(p) and p != self:
 			var d = global_position.distance_to(p.global_position)
-			if d < min_d:
+			if d <= visual_range and d < min_d:
 				min_d = d
 				closest = p
 	return closest
@@ -2692,7 +2740,7 @@ func _find_closest_food_or_treat() -> Node2D:
 
 			if matches:
 				var d = global_position.distance_to(item.global_position)
-				if d < min_d:
+				if d <= visual_range and d < min_d:
 					min_d = d
 					closest = item
 	return closest
@@ -2868,6 +2916,7 @@ func get_save_dict() -> Dictionary:
 		"pet_id": pet_id,
 		"pet_name": pet_name,
 		"genetic_seed": genetic_seed,
+		"visual_range": visual_range,
 		"element_type_idx": element_type_idx,
 		"life_stage": life_stage,
 		"time_outside_dispenser_seconds": time_outside_dispenser_seconds,
