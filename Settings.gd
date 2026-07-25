@@ -1,6 +1,6 @@
 extends Node
 
-const VERSION = "1.1.2"
+const VERSION = "1.1.3"
 
 
 var play_pen_mode: bool = false

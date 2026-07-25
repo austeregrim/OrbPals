@@ -1,0 +1,41 @@
+AI Prompts for Needs, Emotions, and Pet Call Out/Recall Icons
+(Optimized for 3-year-olds: high contrast, simple recognizable shapes, vibrant colors, isolated on white backgrounds)
+
+a simple donut with icing and sprinkles icon in white with a dark grey background
+
+1. Pet Summoning & Recall Action Icons
+Call Out Pet Icon ("Come Play!"):
+Prompt: Vibrant 2D cartoon app icon, simple cute open toy house with a bright yellow door wide open, a tiny happy round pet bouncing out into the room with open arms and a cheerful smile, bright primary colors (yellow, sky blue, green), bold clean outlines, isolated white background, toddler friendly design --no realistic details
+
+Recall Pet Icon ("Go Home / Rest"):
+Prompt: Vibrant 2D cartoon app icon, simple cozy pet house with a glowing friendly archway, a soft green arrow pointing into the doorway where a cute pet is peeking in peacefully, bright cozy colors, simple bold shapes, isolated white background, toddler friendly --no complex textures
+
+Recall All Pets Icon:
+Prompt: Vibrant 2D cartoon app icon, three small cozy colorful pet houses side by side with little happy pet silhouettes returning home, simple bold vector style, warm friendly colors, isolated white background --no dark themes
+
+2. Needs List Icons
+Hunger (Food):
+Prompt: Bold simple 2D vector icon of a bright red food bowl filled with pet treats and a shiny red apple, thick black outlines, toddler toy style, isolated white background
+
+Energy (Sleep):
+Prompt: Bold simple 2D vector icon of a sleeping yellow crescent moon with a nightcap and soft blue 'Zzz' bubbles, cute bedtime cartoon style, isolated white background
+
+Play (Boredom):
+Prompt: Bold simple 2D vector icon of a bouncy rainbow-striped toy ball with yellow sparkles around it, simple shiny 2D sticker style, isolated white background
+
+Affection (Love):
+Prompt: Bold simple 2D vector icon of a big shiny pink and red heart with tiny sparkling stars around it, warm bright colors, isolated white background
+
+Toilet (Potty):
+Prompt: Bold simple 2D vector icon of a cute friendly white cartoon potty with a smiling face, gentle toddler design, clean bright colors, isolated white background
+
+Wellness (Health):
+Prompt: Bold simple 2D vector icon of a shiny red heart with a clean white medical cross in the middle, cute high contrast sticker, isolated white background
+
+Curiosity:
+Prompt: Bold simple 2D vector icon of a bright blue magnifying glass revealing a shiny yellow star, simple clear shapes, isolated white background
+
+Agitation (Stress):
+Prompt: Bold simple 2D vector icon of a soft purple storm cloud with a small cute yellow zigzag lightning bolt, cartoon style, isolated white background
+
+
